@@ -1,0 +1,62 @@
+from rest_framework import serializers
+from .models import *
+
+# Serializer para cada modelo
+class EstadoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Estado
+        fields = '__all__'
+
+class PlantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Plant
+        fields = '__all__'
+
+class AreaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Area
+        fields = '__all__'
+
+class SystemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = System
+        fields = '__all__'
+
+class EquipmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Equipment
+        fields = '__all__'
+
+class TaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Task
+        fields = '__all__'
+
+class TaskPSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskP
+        fields = '__all__'
+
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = '__all__'
+
+class CorrectiveTaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CorrectiveTask
+        fields = '__all__'
+
+
+class VTaskPSerializer(serializers.Serializer):
+    planta = serializers.CharField()
+    sistema = serializers.CharField()
+    equipo = serializers.CharField()
+    descripcion = serializer.CharField()
+    tarea_descripcion = serializers.CharField()
+    semana = serializers.IntegerField()
+    fecha = serializers.DateField()
+    dia_semana = serializers.CharField()
+    estado = serializers.CharField()
+    turno = serializers.CharField()
+

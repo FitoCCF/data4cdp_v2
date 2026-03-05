@@ -1,0 +1,203 @@
+/* =========================================
+   1. TIPOGRAFÍA (LETRA)
+   ========================================= */
+
+:root {
+  /* 
+    Define la familia de fuentes principal.
+    'Inter' es la fuente moderna predeterminada.
+    Si no carga, usa 'system-ui' (la del sistema operativo) y luego otras alternativas comunes.
+  */
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+  /* 
+    Define la altura de línea base (1.5 es 150% del tamaño de letra),
+    ideal para lectura cómoda.
+  */
+  line-height: 1.5;
+
+  /* 
+    Define el peso (grosor) base de la fuente.
+    400 es 'Normal' o 'Regular'.
+  */
+  font-weight: 400;
+
+  /* 
+    Ajustes técnicos para que la fuente se vea más nítida 
+    en navegadores modernos y sistemas MacOS/iOS.
+  */
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* =========================================
+   2. ENLACES (LINKS)
+   ========================================= */
+
+a {
+  /* 
+    Peso de fuente un poco más grueso (500) para que 
+    los enlaces destaquen del texto normal.
+  */
+  font-weight: 500;
+
+  /* 
+    Color del enlace. 
+    #646cff es un tono azul-violeta vibrante.
+  */
+  color: #646cff;
+
+  /* 
+    IMPORTANTE: Elimina el subrayado por defecto.
+    'inherit' o 'none' logran esto si el padre no tiene subrayado.
+    Usamos 'none' para asegurarlo explícitamente.
+  */
+  text-decoration: none;
+}
+
+/* 
+  Estilo que se aplica cuando el cursor pasa por encima del enlace (Hover).
+*/
+a:hover {
+  /* 
+    Cambia el color a un tono un poco más oscuro/intenso 
+    para indicar interactividad.
+  */
+  color: #535bf2;
+}
+
+/* =========================================
+   3. TABLAS (TABLES)
+   ========================================= */
+
+/* Estilos para el contenedor de la tabla (opcional pero recomendado) */
+.table-container {
+  padding: 20px;
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+}
+
+/* Estilos para el título encima de la tabla */
+.table-header {
+  margin-bottom: 20px;
+}
+
+/* Contenedor responsivo para la tabla */
+.table-wrapper {
+  overflow-x: auto;
+}
+
+/* Estilos base de la tabla */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  /* Elimina espacios entre celdas */
+  margin-bottom: 1rem;
+}
+
+/* Estilos para celdas de encabezado (th) y cuerpo (td) */
+th,
+td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  /* Línea divisoria suave */
+}
+
+/* Estilos específicos para el encabezado */
+th {
+  background-color: #f8f9fa;
+  /* Fondo gris muy claro */
+  font-weight: 600;
+  /* Texto en negrita suave */
+  color: #333;
+  /* Color de texto oscuro */
+}
+
+/* Efecto hover en las filas */
+tr:hover {
+  background-color: #f5f5f5;
+  /* Fondo gris claro al pasar el mouse */
+}
+
+/* Estilo para mensaje "Sin datos" */
+.no-data {
+  text-align: center;
+  padding: 20px;
+  color: #666;
+  font-style: italic;
+}
+
+/* =========================================
+   4. BOTONES (BUTTONS)
+   ========================================= */
+
+/* Estilo base para todos los botones */
+.btn {
+  padding: 0.5rem 1rem;
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s ease-in-out;
+  color: #ffffff;
+  /* Texto blanco por defecto */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+/* Tamaño de botón pequeño (ideal para tablas) */
+.btn-sm {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+/* Botón deshabilitado */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.5);
+}
+
+/* Variante: AZUL (Primary / Editar / Actualizar) */
+.btn-blue {
+  background: #3b82f6;
+}
+
+.btn-blue:not(:disabled):hover {
+  background: #2563eb;
+}
+
+/* Variante: VERDE (Success / Guardar / Nuevo) */
+.btn-green {
+  background: #10b981;
+}
+
+.btn-green:not(:disabled):hover {
+  background: #059669;
+}
+
+/* Variante: ROJO (Danger / Eliminar) */
+.btn-red {
+  background: #ef4444;
+}
+
+.btn-red:not(:disabled):hover {
+  background: #dc2626;
+}
+
+/* Variante: GRIS (Secondary / Cancelar) */
+.btn-gray {
+  background: #64748b;
+}
+
+.btn-gray:not(:disabled):hover {
+  background: #475569;
+}

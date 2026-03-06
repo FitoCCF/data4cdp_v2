@@ -8,7 +8,7 @@
 <template>
   <!-- Sección principal que contiene toda la vista de ensayos/muestreo -->
   <section class="assays-view">
-    
+
     <!-- Tabla que estructura el encabezado del reporte, imitando el formato físico -->
     <table class="report-table">
       <!-- Fila 1: Contiene los Logos, el Título del reporte y el Código del documento -->
@@ -225,7 +225,7 @@
             <!-- Muestra el % Ins formateado -->
             <td>{{ formatNumber(assay.pIns) }}</td>
           </tr>
-          
+
           <!-- Muestra mensaje si no hay resultados tras filtrar y no está cargando -->
           <tr v-if="filteredAssays.length === 0 && !loading">
             <td colspan="14" class="no-results">
@@ -242,11 +242,11 @@
 // Importa funciones reactivas y hooks del ciclo de vida de Vue
 import { ref, computed, onMounted } from 'vue';
 // Importa la instancia de API para realizar peticiones HTTP
-import { api } from '../../api'; 
+import { api } from '../../api';
 
 // --- Estado Reactivo ---
 // Almacena la fecha seleccionada por defecto es la fecha actual (ISO string)
-const selectedDate = ref(new Date().toISOString().split('T')[0]); 
+const selectedDate = ref(new Date().toISOString().split('T')[0]);
 // Almacena el ID del equipo seleccionado en el filtro
 const selectedEquipment = ref('');
 // Almacena el ID del usuario seleccionado en el filtro
@@ -264,7 +264,7 @@ const usersById = ref({});
 const userPsById = ref({});
 
 // Lista de opciones para el selector de Equipos
-const equipmentOptions = ref([]); 
+const equipmentOptions = ref([]);
 // Lista de opciones para el selector de Usuarios
 const userOptions = ref([]);
 // Lista de opciones para el selector de Operadores (Strings únicos)
@@ -295,7 +295,7 @@ const loadData = async () => {
 
     // Asigna los datos de ensayos
     assays.value = assaysRes.data || [];
-    
+
     // Procesa y mapea las muestras
     const samples = samplesRes.data || [];
     samplesById.value = samples.reduce((acc, s) => {
@@ -332,7 +332,7 @@ const loadData = async () => {
     // (plantsById y areasById se crean pero no se usan activamente en la lógica actual)
     const plantsById = {};
     (plantsRes.data || []).forEach(p => plantsById[p.id] = p.name);
-    
+
     const areasById = {};
     (areasRes.data || []).forEach(a => areasById[a.id] = a);
 
@@ -367,7 +367,7 @@ const filteredAssays = computed(() => {
   return assays.value.filter(a => {
     // 1. Filtro por Fecha
     if (selectedDate.value && a.date !== selectedDate.value) return false;
-    
+
     // 2. Filtro por Equipo
     if (selectedEquipment.value) {
         // Obtiene la muestra asociada al ensayo
@@ -419,7 +419,7 @@ const getSampleTag = (sampleId) => {
   if (!sampleId) return '';
   const sample = samplesById.value[sampleId];
   // Retorna sn si existe, sino vacío
-  return sample ? sample.sn : ''; 
+  return sample ? sample.sn : '';
 };
 
 // Formatea la hora cortando los segundos si es necesario (HH:MM)
@@ -432,7 +432,7 @@ const formatTime = (timeStr) => {
 // Formatea números (actualmente solo passthrough, listo para lógica futura)
 const formatNumber = (val) => {
   if (val === null || val === undefined) return '';
-  return val; 
+  return val;
 };
 
 // --- Ciclo de Vida ---

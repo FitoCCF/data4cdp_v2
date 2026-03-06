@@ -104,15 +104,19 @@ class SampleViewSet(viewsets.ModelViewSet):
 
 
 class AssayViewSet(viewsets.ModelViewSet):
-    queryset = Assay.objects.all()
+    # Optimización: Usamos select_related para traer datos de Sample y Equipment en una sola consulta
+    queryset = Assay.objects.select_related('sample', 'sample__equipment').all()
     serializer_class = AssaySerializer
+    
+    # Configuración de filtros
+    filter_backends = [DjangoFilterBackend]
+    # Permite filtrar por ID de equipo (sample__equipment), fecha, o ID de muestra
+    filterset_fields = ['sample__equipment', 'date', 'sample']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
         fields = [field.name for field in Assay._meta.fields]
         return Response({'fields': fields})
-
-
 
 
 class VTaskPViewSet(viewsets.ReadOnlyModelViewSet):  # Solo lectura

@@ -4,10 +4,16 @@ from django.contrib.auth.models import User as AuthUser
 class Estado(models.Model):
     estado_nombre = models.CharField(max_length=50)
 
+    class Meta:
+        ordering = ['-id']
+
 class Plant(models.Model):
     tag = models.CharField(max_length=10)
     name = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 class Area(models.Model):
     name = models.CharField(max_length=100)
@@ -15,10 +21,16 @@ class Area(models.Model):
     description = models.TextField(null=True, blank=True)
     plant = models.ForeignKey(Plant, on_delete=models.CASCADE)
 
+    class Meta:
+        ordering = ['-id']
+
 class System(models.Model):
     tag = models.CharField(max_length=50, null=True, blank=True)
     name = models.CharField(max_length=100)
     description = models.TextField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 class Equipment(models.Model):
     tag = models.CharField(max_length=50, null=True, blank=True)
@@ -26,6 +38,9 @@ class Equipment(models.Model):
     description = models.TextField(null=True, blank=True)
     system = models.ForeignKey(System, on_delete=models.CASCADE)
     area = models.ForeignKey(Area, on_delete=models.CASCADE, null=True, blank=True)  # Nuevo campo agregado
+
+    class Meta:
+        ordering = ['-id']
 
 class Task(models.Model):
     name = models.CharField(max_length=100)
@@ -38,6 +53,9 @@ class Task(models.Model):
     procedure = models.TextField(null=True, blank=True)
     turn = models.CharField(max_length=10, null=True, blank=True)
 
+    class Meta:
+        ordering = ['-id']
+
 
 class User(models.Model):
     auth_user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, null=True, blank=True)
@@ -45,6 +63,9 @@ class User(models.Model):
     apellido = models.CharField(max_length=50)
     email = models.EmailField(unique=True)
     rol = models.CharField(max_length=50, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 
 class UserP(models.Model):
@@ -56,8 +77,12 @@ class UserP(models.Model):
     state = models.CharField(max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
     turn = models.CharField(max_length=10)  # Turno (Ejemplo: "A", "B", "C")
 
+    class Meta:
+        ordering = ['-id']
+
     def __str__(self):
         return f"{self.user.nombre} - {self.date} - {self.turn}"
+
 
 
 class TaskP(models.Model):
@@ -77,6 +102,9 @@ class TaskP(models.Model):
     priority = models.IntegerField(null=True, blank=True)
     #equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, null=True, blank=True)
 
+    class Meta:
+        ordering = ['-id']
+
 
 class CorrectiveTask(models.Model):
     year = models.IntegerField(null=True, blank=True)
@@ -95,12 +123,18 @@ class CorrectiveTask(models.Model):
     comments = models.TextField(null=True, blank=True)
     turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
 
+    class Meta:
+        ordering = ['-id']
+
 
 class Sample(models.Model):
     tag = models.CharField(max_length=50)
     name = models.CharField(max_length=50)
     equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, related_name="samples")
     sn = models.CharField(max_length=4, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
     def __str__(self):
         return f"{self.tag} - {self.name}"
@@ -138,7 +172,9 @@ class Assay(models.Model):
     a7a7 = models.FloatField(null=True, blank=True)
     userp = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
     meta_user = models.CharField(max_length=50, null=True, blank=True)
-    turn = models.CharField(max_length=10, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 class VTaskP(models.Model):
     planta = models.CharField(max_length=255)
@@ -158,6 +194,7 @@ class VTaskP(models.Model):
     class Meta:
         managed = False  # No permite que Django administre la vista
         db_table = "vtaskp"  # Nombre exacto de la vista en PostgreSQL
+        ordering = ['-id_taskp']
 
 class AssaysPsi(models.Model):
     date = models.DateField(null=True, blank=True)
@@ -219,5 +256,8 @@ class AssaysPsi(models.Model):
     meta_user = models.CharField(max_length=50, null=True, blank=True)
     sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True)
     turn = models.CharField(max_length=10, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
 
 

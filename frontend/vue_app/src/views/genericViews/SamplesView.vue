@@ -14,8 +14,18 @@
       :headers="headers"
       :data="samplesData"
       :columnsConfig="columnsConfig"
+      :currentPage="currentPage"
+      :totalPages="totalPages"
+      :totalItems="totalItems"
+      :pageSize="pageSize"
+      :serverSideFiltering="true"
+      :filterData="filterData"
       @save="handleSave"
       @delete="handleDelete"
+      @pageChange="handlePageChange"
+      @pageSizeChange="handlePageSizeChange"
+      @filterChange="handleFilterChange"
+      @sortChange="handleSortChange"
     />
 
     <!-- Indicador de carga que se superpone a la vista -->
@@ -51,6 +61,30 @@ const loading = ref(false);
 // Almacena el mensaje de error a mostrar
 const error = ref(null);
 
+// Estado Paginación y Filtrado
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const pageSize = ref(25);
+const currentFilters = ref({});
+const currentSort = ref({ colIndex: null, direction: null });
+const filterData = ref([]);
+
+const loadFilterData = async () => {
+    try {
+        const response = await api.get('samples/', { params: { page_size: 10000 } });
+        const results = response.data.results || response.data;
+        filterData.value = results.map(s => [
+            s.id,
+            s.tag || '',
+            s.name || '',
+            (s.equipment && typeof s.equipment === 'object') ? s.equipment.id : (s.equipment || '')
+        ]);
+    } catch (err) {
+        console.error('Error cargando datos para filtros:', err);
+    }
+};
+
 // --- Propiedades Computadas ---
 
 /**
@@ -84,38 +118,77 @@ const columnsConfig = computed(() => {
 /**
  * Carga los datos de muestras y equipos desde el backend.
  */
-const loadData = async () => {
+const loadData = async (page = 1) => {
   // Activa el estado de carga
   loading.value = true;
   // Limpia errores previos
   error.value = null;
 
   try {
-    // Realiza peticiones en paralelo para optimizar tiempos de carga
+    const params = { 
+        page, 
+        page_size: pageSize.value 
+    };
+
+    const colToFieldMap = {
+        0: 'id',
+        1: 'tag',
+        2: 'name',
+        3: 'equipment'
+    };
+
+    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
+        const fieldName = colToFieldMap[colIndex];
+        if (fieldName && values.length > 0) {
+            params[`${fieldName}__in`] = values.join(','); 
+        }
+    }
+
+    if (currentSort.value.colIndex !== null) {
+        const fieldName = colToFieldMap[currentSort.value.colIndex];
+        if (fieldName) {
+            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
+        }
+    }
+
+    // Realiza peticiones en paralelo: Muestras (Paginadas) y Equipos (Todos los registros para el dropdown)
     const [samplesRes, equipmentsRes] = await Promise.all([
-        api.get('samples/'),
-        api.get('equipments/')
+        api.get('samples/', { params }),
+        // Agregamos page_size: 10000 para ignorar la paginación estándar y proveer todas las opciones al selector
+        api.get('equipments/', { params: { page_size: 10000 } })
     ]);
 
     // Procesa y almacena la lista de equipos
-    if (Array.isArray(equipmentsRes.data)) {
-        equipmentsList.value = equipmentsRes.data;
+    if (equipmentsRes.data) {
+        equipmentsList.value = Array.isArray(equipmentsRes.data) ? equipmentsRes.data : 
+                               (equipmentsRes.data.results ? equipmentsRes.data.results : []);
     }
 
     // Procesa y transforma los datos de las muestras
-    if (Array.isArray(samplesRes.data)) {
-        samplesData.value = samplesRes.data.map(sample => [
-            sample.id,
-            sample.tag || '',
-            sample.name || '',
-            // Extrae el ID de la clave foránea 'equipment'
-            (sample.equipment && typeof sample.equipment === 'object') ? sample.equipment.id : (sample.equipment || '')
-        ]);
+    const responseData = samplesRes.data;
+    let dataArray = [];
+
+    if (responseData && responseData.results) {
+        dataArray = responseData.results;
+        totalItems.value = responseData.count;
+        totalPages.value = Math.ceil(responseData.count / pageSize.value);
+        currentPage.value = page;
+    } else if (Array.isArray(responseData)) {
+        dataArray = responseData;
+        totalItems.value = dataArray.length;
+        totalPages.value = 1;
+        currentPage.value = 1;
     } else {
-        // Si la API no devuelve un array, inicializa como vacío y advierte en consola
-        samplesData.value = [];
-        console.warn('La API de muestras no devolvió un array:', samplesRes.data);
+        console.warn('La API no devolvió un formato válido:', responseData);
     }
+
+    samplesData.value = dataArray.map(sample => [
+        sample.id,
+        sample.tag || '',
+        sample.name || '',
+        // Extrae el ID de la clave foránea 'equipment'
+        (sample.equipment && typeof sample.equipment === 'object') ? sample.equipment.id : (sample.equipment || '')
+    ]);
 
   } catch (err) {
     // Manejo de errores de la petición
@@ -125,6 +198,25 @@ const loadData = async () => {
     // Desactiva el estado de carga, independientemente del resultado
     loading.value = false;
   }
+};
+
+const handlePageChange = (newPage) => {
+    loadData(newPage);
+};
+
+const handlePageSizeChange = (newSize) => {
+    pageSize.value = newSize;
+    loadData(1);
+};
+
+const handleFilterChange = (filters) => {
+    currentFilters.value = filters;
+    loadData(1);
+};
+
+const handleSortChange = (sortConfig) => {
+    currentSort.value = sortConfig;
+    loadData(1);
 };
 
 /**
@@ -166,6 +258,7 @@ const handleSave = async (updatedGrid) => {
 
     // Recarga los datos para reflejar los cambios y obtener nuevos IDs
     await loadData();
+    await loadFilterData();
 
   } catch (err) {
     // Manejo de errores durante el guardado
@@ -190,6 +283,7 @@ const handleDelete = async (idsToDelete) => {
         await Promise.all(deletePromises);
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
+        await loadFilterData();
 
     } catch (err) {
         console.error('Error eliminando muestras:', err);
@@ -206,6 +300,7 @@ const handleDelete = async (idsToDelete) => {
 onMounted(() => {
   // Llama a la función para cargar los datos iniciales
   loadData();
+  loadFilterData();
 });
 </script>
 

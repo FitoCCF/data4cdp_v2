@@ -47,6 +47,37 @@
       </div>
     </div>
 
+    <!-- CONTROLES DE PAGINACIÓN (NUEVO) -->
+    <div class="pagination-controls" v-if="totalPages > 1 || totalItems > 0">
+        <button 
+          class="btn btn-sm" 
+          :disabled="currentPage === 1" 
+          @click="changePage(currentPage - 1)">
+          &laquo; Anterior
+        </button>
+        
+        <span class="page-info">
+          Página {{ currentPage }} de {{ totalPages }} (Total: {{ totalItems }})
+        </span>
+
+        <!-- Selector de tamaño de página -->
+        <select class="page-size-selector" :value="pageSize" @change="changePageSize($event)">
+          <option :value="25">25 / página</option>
+          <option :value="50">50 / página</option>
+          <option :value="100">100 / página</option>
+          <option :value="200">200 / página</option>
+          <option :value="500">500 / página</option>
+          <option :value="10000">Todos</option>
+        </select>
+
+        <button 
+          class="btn btn-sm" 
+          :disabled="currentPage === totalPages || totalPages === 0" 
+          @click="changePage(currentPage + 1)">
+          Siguiente &raquo;
+        </button>
+    </div>
+
     <!-- CONTENEDOR DE LA TABLA (SCROLLABLE) -->
     <div
       class="table-wrapper"
@@ -190,7 +221,7 @@
           <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"> (Seleccionar todo)
         </label>
         <label v-for="val in filteredUniqueValues" :key="val" class="menu-item">
-          <input type="checkbox" :checked="tempSelectedValues.has(val)" @change="toggleValue(val)">
+          <input type="checkbox" :checked="tempSelectedValues.has(String(val))" @change="toggleValue(String(val))">
           {{ getFilterLabel(openMenuIndex, val) }}
         </label>
       </div>
@@ -225,11 +256,30 @@ const props = defineProps({
   title: { type: String, default: 'Tabla de Datos' },
   headers: { type: Array, required: true, default: () => [] },
   data: { type: Array, required: true, default: () => [] },
-  columnsConfig: { type: Object, default: () => ({}) }
+  columnsConfig: { type: Object, default: () => ({}) },
+  // Nuevas props para Paginación y Filtrado backend
+  currentPage: { type: Number, default: 1 },
+  totalPages: { type: Number, default: 1 },
+  totalItems: { type: Number, default: 0 },
+  pageSize: { type: Number, default: 25 },
+  serverSideFiltering: { type: Boolean, default: false }, // Indica si el filtro lo hace el backend
+  filterData: { type: Array, default: () => [] } // Datos completos para el menú de filtros
 });
 
 // --- EMITS ---
-const emit = defineEmits(['save', 'delete']);
+const emit = defineEmits(['save', 'delete', 'pageChange', 'pageSizeChange', 'filterChange', 'sortChange']);
+
+// --- MÉTODOS PAGINACIÓN ---
+const changePage = (newPage) => {
+    if (newPage >= 1 && newPage <= props.totalPages) {
+        emit('pageChange', newPage);
+    }
+};
+
+const changePageSize = (event) => {
+    const newSize = parseInt(event.target.value, 10);
+    emit('pageSizeChange', newSize);
+};
 
 // --- CONSTANTES ---
 const MIN_COL_WIDTH = 80;
@@ -287,6 +337,12 @@ const getFilterLabel = (colIndex, value) => {
 const filteredGrid = computed(() => {
     let result = localGrid.value.map((row, index) => ({ row, originalIndex: index }));
 
+    // Si el filtrado o ordenamiento lo hace el backend, simplemente retornamos los datos tal cual
+    if (props.serverSideFiltering) {
+        return result;
+    }
+
+    // --- FILTRADO LOCAL (Solo aplica si no hay serverSideFiltering) ---
     const activeCols = Object.keys(activeFilters.value);
     if (activeCols.length > 0) {
         result = result.filter(item => {
@@ -335,7 +391,13 @@ const filteredGrid = computed(() => {
 
 const currentUniqueValues = computed(() => {
     if (openMenuIndex.value === null) return [];
-    const values = new Set(localGrid.value.map(row => String(row[openMenuIndex.value] || '')));
+    
+    // Si tenemos filterData y el filtrado es de servidor, usamos filterData para extraer opciones
+    const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
+                        ? props.filterData 
+                        : localGrid.value;
+    
+    const values = new Set(sourceData.map(row => String(row[openMenuIndex.value] || '')));
     return Array.from(values).sort();
 });
 
@@ -369,7 +431,10 @@ const toggleFilterMenu = (index, event) => {
     if (activeFilters.value[index]) {
         tempSelectedValues.value = new Set(activeFilters.value[index]);
     } else {
-        tempSelectedValues.value = new Set(localGrid.value.map(row => String(row[index] || '')));
+        const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
+                            ? props.filterData 
+                            : localGrid.value;
+        tempSelectedValues.value = new Set(sourceData.map(row => String(row[index] || '')));
     }
 };
 
@@ -377,30 +442,56 @@ const closeFilterMenu = () => { openMenuIndex.value = null; };
 const handleGlobalClick = () => { if (openMenuIndex.value !== null) closeFilterMenu(); };
 
 const toggleValue = (val) => {
-    if (tempSelectedValues.value.has(val)) tempSelectedValues.value.delete(val);
-    else tempSelectedValues.value.add(val);
+    const strVal = String(val);
+    if (tempSelectedValues.value.has(strVal)) tempSelectedValues.value.delete(strVal);
+    else tempSelectedValues.value.add(strVal);
 };
 
 const toggleSelectAll = () => {
-    if (isAllSelected.value) filteredUniqueValues.value.forEach(v => tempSelectedValues.value.delete(v));
-    else filteredUniqueValues.value.forEach(v => tempSelectedValues.value.add(v));
+    if (isAllSelected.value) filteredUniqueValues.value.forEach(v => tempSelectedValues.value.delete(String(v)));
+    else filteredUniqueValues.value.forEach(v => tempSelectedValues.value.add(String(v)));
 };
 
 const applyFilter = () => {
     const index = openMenuIndex.value;
-    const allValues = new Set(localGrid.value.map(row => String(row[index] || '')));
+    
+    const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
+                        ? props.filterData 
+                        : localGrid.value;
+    const allValues = new Set(sourceData.map(row => String(row[index] || '')));
+    
+    // Preparar objeto de filtro que se enviará arriba
+
+    let newActiveFilters = { ...activeFilters.value };
+
     if (tempSelectedValues.value.size === allValues.size) {
-        const newFilters = { ...activeFilters.value };
-        delete newFilters[index];
-        activeFilters.value = newFilters;
+        delete newActiveFilters[index];
     } else {
-        activeFilters.value = { ...activeFilters.value, [index]: new Set(tempSelectedValues.value) };
+        newActiveFilters[index] = new Set(tempSelectedValues.value);
     }
+
+    activeFilters.value = newActiveFilters;
+
+    // Si es filtrado tipo backend, emitimos el evento con los nuevos filtros (pasamos arrays nativos)
+    if (props.serverSideFiltering) {
+        const filtersToSend = {};
+        for (const key in activeFilters.value) {
+           filtersToSend[key] = Array.from(activeFilters.value[key]);
+        }
+        emit('filterChange', filtersToSend);
+    }
+
     closeFilterMenu();
 };
 
 const sortColumn = (colIndex, direction) => {
     sortState.value = { colIndex, direction };
+    
+    // Si es paginación de backend, el backend o vista padre debe ordenarlo
+    if (props.serverSideFiltering) {
+        emit('sortChange', { colIndex, direction });
+    }
+
     closeFilterMenu();
 };
 
@@ -647,7 +738,11 @@ onMounted(() => { initGrid(); });
 .status-read { background-color: #e5e7eb; color: #374151; border: 1px solid #d1d5db; }
 .status-edit { background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
 .actions { display: flex; gap: 10px; align-items: center; }
+.pagination-controls { display: flex; justify-content: center; align-items: center; gap: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; margin-bottom: 10px; flex-wrap: wrap;}
+.page-info { font-size: 0.9rem; color: #555; font-weight: 500; }
+.page-size-selector { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; cursor: pointer; }
 .table-wrapper { overflow: auto; border: 1px solid #ccc; flex-grow: 1; position: relative; background-color: #f9f9f9; }
+
 .excel-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; background-color: white; }
 .excel-table th, .excel-table td { border-right: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; padding: 4px 8px; position: relative; box-sizing: border-box; overflow: hidden; white-space: nowrap; font-size: 14px; }
 .excel-table th { background-color: #f3f4f6; font-weight: 600; text-align: center; user-select: none; position: sticky; top: 0; z-index: 20; border-top: 1px solid #d1d5db; height: 30px; }

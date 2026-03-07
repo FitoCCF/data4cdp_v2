@@ -8,6 +8,7 @@ from .serializers import *
 from rest_framework.views import APIView
 from .serializers import VTaskPSerializer
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters
 
 # ViewSet para cada modelo con un nuevo endpoint `/schema/`
 class EstadoViewSet(viewsets.ModelViewSet):
@@ -21,8 +22,22 @@ class EstadoViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 class PlantViewSet(viewsets.ModelViewSet):
+    # Consulta base que obtiene todos los registros del modelo Plant
     queryset = Plant.objects.all()
+    # Define el serializador encargado de convertir objetos Plant a JSON (y viceversa)
     serializer_class = PlantSerializer
+    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'tag': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains'],
+        'description': ['exact', 'in', 'icontains']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados (ej: ?ordering=name)
+    ordering_fields = ['id', 'tag', 'name', 'description']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -30,8 +45,23 @@ class PlantViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 class AreaViewSet(viewsets.ModelViewSet):
+    # Consulta base que obtiene todos los registros del modelo Area
     queryset = Area.objects.all()
+    # Define el serializador encargado de convertir objetos Area a JSON (y viceversa)
     serializer_class = AreaSerializer
+    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'tag': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains'],
+        'description': ['exact', 'in', 'icontains'],
+        'plant': ['exact', 'in']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
+    ordering_fields = ['id', 'tag', 'name', 'description', 'plant']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -39,8 +69,22 @@ class AreaViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 class SystemViewSet(viewsets.ModelViewSet):
+    # Consulta base que obtiene todos los registros del modelo System
     queryset = System.objects.all()
+    # Define el serializador encargado de convertir objetos System a JSON (y viceversa)
     serializer_class = SystemSerializer
+    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'tag': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains'],
+        'description': ['exact', 'in', 'icontains']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
+    ordering_fields = ['id', 'tag', 'name', 'description']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -48,8 +92,24 @@ class SystemViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 class EquipmentViewSet(viewsets.ModelViewSet):
+    # Consulta base que obtiene todos los registros del modelo Equipment
     queryset = Equipment.objects.all()
+    # Define el serializador encargado de convertir objetos Equipment a JSON (y viceversa)
     serializer_class = EquipmentSerializer
+    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'tag': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains'],
+        'description': ['exact', 'in', 'icontains'],
+        'system': ['exact', 'in'],
+        'area': ['exact', 'in']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
+    ordering_fields = ['id', 'tag', 'name', 'description', 'system', 'area']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -94,8 +154,22 @@ class CorrectiveTaskViewSet(viewsets.ModelViewSet):
 
 
 class SampleViewSet(viewsets.ModelViewSet):
+    # Consulta base que obtiene todos los registros del modelo Sample
     queryset = Sample.objects.all()
+    # Define el serializador encargado de convertir objetos Sample a JSON (y viceversa)
     serializer_class = SampleSerializer
+    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'tag': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains'],
+        'equipment': ['exact', 'in']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
+    ordering_fields = ['id', 'tag', 'name', 'equipment']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -106,12 +180,23 @@ class SampleViewSet(viewsets.ModelViewSet):
 class AssayViewSet(viewsets.ModelViewSet):
     # Optimización: Usamos select_related para traer datos de Sample y Equipment en una sola consulta
     queryset = Assay.objects.select_related('sample', 'sample__equipment').all()
+    # Define el serializador encargado de convertir objetos Assay a JSON (y viceversa)
     serializer_class = AssaySerializer
     
-    # Configuración de filtros
-    filter_backends = [DjangoFilterBackend]
-    # Permite filtrar por ID de equipo (sample__equipment), fecha, o ID de muestra
-    filterset_fields = ['sample__equipment', 'date', 'sample']
+    # Configuración de backends de filtros: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    # Especifica explícitamente qué campos pueden ser usados como filtros
+    # sample__equipment permite filtrar ensayos según el equipo de su muestra
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'date': ['exact', 'in', 'gte', 'lte'],
+        'time': ['exact', 'in'],
+        'sample': ['exact', 'in'],
+        'sample__equipment': ['exact', 'in'],
+        'userp': ['exact', 'in']
+    }
+    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
+    ordering_fields = ['id', 'date', 'time', 'sample', 'userp']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):

@@ -134,3 +134,11 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Django REST Framework Settings
+# Habilitar Paginación Global
+REST_FRAMEWORK = {
+    'DEFAULT_PAGINATION_CLASS': 'works4cdp.pagination.CustomPagination',
+    'PAGE_SIZE': 25,
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend']
+}

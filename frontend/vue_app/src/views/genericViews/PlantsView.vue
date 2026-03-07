@@ -9,8 +9,18 @@
       title="Mantenimiento de Plantas"
       :headers="headers"
       :data="plantsData"
+      :currentPage="currentPage"
+      :totalPages="totalPages"
+      :totalItems="totalItems"
+      :pageSize="pageSize"
+      :serverSideFiltering="true"
+      :filterData="filterData"
       @save="handleSave"
       @delete="handleDelete"
+      @pageChange="handlePageChange"
+      @pageSizeChange="handlePageSizeChange"
+      @filterChange="handleFilterChange"
+      @sortChange="handleSortChange"
     />
     
     <!-- Indicador de carga -->
@@ -34,32 +44,114 @@ const plantsData = ref([]);
 const loading = ref(false);
 const error = ref(null);
 
-/**
- * Carga los datos de plantas desde la API
- */
-const loadData = async () => {
-  loading.value = true;
-  error.value = null;
+// Estado Paginación y Filtrado
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const pageSize = ref(25);
+const currentFilters = ref({});
+const currentSort = ref({ colIndex: null, direction: null });
+const filterData = ref([]);
 
-  try {
-    const response = await api.get('plants/');
-    if (Array.isArray(response.data)) {
-        plantsData.value = response.data.map(p => [
+const loadFilterData = async () => {
+    try {
+        const response = await api.get('plants/', { params: { page_size: 10000 } });
+        const results = response.data.results || response.data;
+        filterData.value = results.map(p => [
             p.id,
             p.tag || '',
             p.name || '',
             p.description || ''
         ]);
-    } else {
-        plantsData.value = [];
-        console.warn('La API no devolvió un array:', response.data);
+    } catch (err) {
+        console.error('Error cargando datos para filtros:', err);
     }
+};
+
+/**
+ * Carga los datos de plantas desde la API
+ */
+const loadData = async (page = 1) => {
+  loading.value = true;
+  error.value = null;
+
+  try {
+    const params = { 
+        page, 
+        page_size: pageSize.value 
+    };
+
+    const colToFieldMap = {
+        0: 'id',
+        1: 'tag',
+        2: 'name',
+        3: 'description'
+    };
+
+    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
+        const fieldName = colToFieldMap[colIndex];
+        if (fieldName && values.length > 0) {
+            params[`${fieldName}__in`] = values.join(','); 
+        }
+    }
+
+    if (currentSort.value.colIndex !== null) {
+        const fieldName = colToFieldMap[currentSort.value.colIndex];
+        if (fieldName) {
+            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
+        }
+    }
+
+    const response = await api.get('plants/', { params });
+    const responseData = response.data;
+
+    let dataArray = [];
+    if (responseData && responseData.results) {
+        dataArray = responseData.results;
+        totalItems.value = responseData.count;
+        totalPages.value = Math.ceil(responseData.count / pageSize.value);
+        currentPage.value = page;
+    } else if (Array.isArray(responseData)) {
+        dataArray = responseData;
+        totalItems.value = dataArray.length;
+        totalPages.value = 1;
+        currentPage.value = 1;
+    } else {
+        console.warn('La API no devolvió un formato válido:', responseData);
+    }
+
+    plantsData.value = dataArray.map(p => [
+        p.id,
+        p.tag || '',
+        p.name || '',
+        p.description || ''
+    ]);
+
   } catch (err) {
     console.error('Error cargando plantas:', err);
     error.value = 'Error al cargar los datos de la base de datos.';
   } finally {
     loading.value = false;
   }
+};
+
+const handlePageChange = (newPage) => {
+    loadData(newPage);
+};
+
+const handlePageSizeChange = (newSize) => {
+    pageSize.value = newSize;
+    loadData(1);
+};
+
+const handleFilterChange = (filters) => {
+    currentFilters.value = filters;
+    loadData(1);
+};
+
+const handleSortChange = (sortConfig) => {
+    currentSort.value = sortConfig;
+    loadData(1);
 };
 
 /**
@@ -88,6 +180,7 @@ const handleSave = async (updatedGrid) => {
     await Promise.all(promises);
     alert('Cambios guardados correctamente en la base de datos.');
     await loadData();
+    await loadFilterData();
   } catch (err) {
     console.error('Error guardando plantas:', err);
     alert('Error al guardar los cambios en la base de datos.');
@@ -113,6 +206,8 @@ const handleDelete = async (idsToDelete) => {
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
 
+        await loadFilterData();
+
         // No es necesario recargar los datos, ya que el grid local ya se actualizó.
         // Opcionalmente, se puede recargar para asegurar consistencia total.
         // await loadData();
@@ -129,6 +224,7 @@ const handleDelete = async (idsToDelete) => {
 
 onMounted(() => {
   loadData();
+  loadFilterData();
 });
 </script>
 

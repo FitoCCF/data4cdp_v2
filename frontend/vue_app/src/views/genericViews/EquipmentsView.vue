@@ -10,8 +10,18 @@
       :headers="headers"
       :data="equipmentsData"
       :columnsConfig="columnsConfig"
+      :currentPage="currentPage"
+      :totalPages="totalPages"
+      :totalItems="totalItems"
+      :pageSize="pageSize"
+      :serverSideFiltering="true"
+      :filterData="filterData"
       @save="handleSave"
       @delete="handleDelete"
+      @pageChange="handlePageChange"
+      @pageSizeChange="handlePageSizeChange"
+      @filterChange="handleFilterChange"
+      @sortChange="handleSortChange"
     />
     
     <!-- Indicador de carga -->
@@ -38,6 +48,32 @@ const areasList = ref([]);   // Lista de áreas para dropdown
 const loading = ref(false);
 const error = ref(null);
 
+// Estado Paginación y Filtrado
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const pageSize = ref(25);
+const currentFilters = ref({});
+const currentSort = ref({ colIndex: null, direction: null });
+const filterData = ref([]);
+
+const loadFilterData = async () => {
+    try {
+        const response = await api.get('equipments/', { params: { page_size: 10000 } });
+        const results = response.data.results || response.data;
+        filterData.value = results.map(e => [
+            e.id,
+            e.tag || '',
+            e.name || '',
+            e.description || '',
+            (e.system && typeof e.system === 'object') ? e.system.id : (e.system || ''),
+            (e.area && typeof e.area === 'object') ? e.area.id : (e.area || '')
+        ]);
+    } catch (err) {
+        console.error('Error cargando datos para filtros:', err);
+    }
+};
+
 // Configuración dinámica de columnas para ExcelGrid (Dropdowns)
 const columnsConfig = computed(() => {
     return {
@@ -55,37 +91,85 @@ const columnsConfig = computed(() => {
 /**
  * Carga los datos de equipos, sistemas y áreas desde la API
  */
-const loadData = async () => {
+const loadData = async (page = 1) => {
   loading.value = true;
   error.value = null;
 
   try {
-    // Carga paralela de recursos
+    // Configurar parámetros de la petición (Paginación + Filtros + Sort)
+    const params = { 
+        page, 
+        page_size: pageSize.value 
+    };
+
+    // Mapeo seguro de índices de columna a campos del backend Django
+    const colToFieldMap = {
+        0: 'id',
+        1: 'tag',
+        2: 'name',
+        3: 'description',
+        4: 'system',
+        5: 'area'
+    };
+
+    // Aplicar filtros dinámicos (búsqueda exacta/in usando DjangoFilters/DRF)
+    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
+        const fieldName = colToFieldMap[colIndex];
+        if (fieldName && values.length > 0) {
+            // Ejemplo: si seleccionaron Área = 'Área 1', mandamos ?area__in=Area1,Area2
+            // Ojo: Esto requiere que el backend tenga configurado DjangoFilterBackend para estos campos
+            params[`${fieldName}__in`] = values.join(','); 
+        }
+    }
+
+    // Aplicar ordenamiento dinámico
+    if (currentSort.value.colIndex !== null) {
+        const fieldName = colToFieldMap[currentSort.value.colIndex];
+        if (fieldName) {
+            // DRF usa ?ordering=campo o ?ordering=-campo
+            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
+        }
+    }
+
+    // Carga paralela de recursos: Equipos (Paginados), Sistemas y Áreas (Listas enteras para Dropdowns)
     const [eqRes, sysRes, areaRes] = await Promise.all([
-        api.get('equipments/'),
-        api.get('systems/'),
-        api.get('areas/')
+        api.get('equipments/', { params }),
+        // Agregamos page_size: 10000 a ambas relaciones para asegurar que el dropdown muestre todos los items disponibles
+        api.get('systems/', { params: { page_size: 10000 } }),
+        api.get('areas/', { params: { page_size: 10000 } })
     ]);
     
     // Procesar listas auxiliares
-    if (Array.isArray(sysRes.data)) systemsList.value = sysRes.data;
-    if (Array.isArray(areaRes.data)) areasList.value = areaRes.data;
+    if (sysRes.data) systemsList.value = Array.isArray(sysRes.data) ? sysRes.data : (sysRes.data.results ? sysRes.data.results : []);
+    if (areaRes.data) areasList.value = Array.isArray(areaRes.data) ? areaRes.data : (areaRes.data.results ? areaRes.data.results : []);
 
     // Procesar Equipos
-    if (Array.isArray(eqRes.data)) {
-        equipmentsData.value = eqRes.data.map(e => [
-            e.id,
-            e.tag || '',
-            e.name || '',
-            e.description || '',
-            // Manejo de FKs: extraer ID si viene objeto completo
-            (e.system && typeof e.system === 'object') ? e.system.id : (e.system || ''),
-            (e.area && typeof e.area === 'object') ? e.area.id : (e.area || '')
-        ]);
+    const responseData = eqRes.data;
+    let dataArray = [];
+
+    if (responseData && responseData.results) {
+        dataArray = responseData.results;
+        totalItems.value = responseData.count;
+        totalPages.value = Math.ceil(responseData.count / pageSize.value);
+        currentPage.value = page;
+    } else if (Array.isArray(responseData)) {
+        dataArray = responseData;
+        totalItems.value = dataArray.length;
+        totalPages.value = 1;
+        currentPage.value = 1;
     } else {
-        equipmentsData.value = [];
-        console.warn('La API no devolvió un array:', eqRes.data);
+        console.warn('La API no devolvió un formato válido:', responseData);
     }
+
+    equipmentsData.value = dataArray.map(e => [
+        e.id,
+        e.tag || '',
+        e.name || '',
+        e.description || '',
+        // Manejo de FKs: extraer ID si viene objeto completo
+        (e.system && typeof e.system === 'object') ? e.system.id : (e.system || ''),
+        (e.area && typeof e.area === 'object') ? e.area.id : (e.area || '')
+    ]);
 
   } catch (err) {
     console.error('Error cargando datos:', err);
@@ -93,6 +177,25 @@ const loadData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handlePageChange = (newPage) => {
+    loadData(newPage);
+};
+
+const handlePageSizeChange = (newSize) => {
+    pageSize.value = newSize;
+    loadData(1); // Volver a la primera página al cambiar el tamaño
+};
+
+const handleFilterChange = (filters) => {
+    currentFilters.value = filters;
+    loadData(1); // Volver a la primera página al aplicar filtros
+};
+
+const handleSortChange = (sortConfig) => {
+    currentSort.value = sortConfig;
+    loadData(1); // Volver a la primera página al ordenar
 };
 
 /**
@@ -128,6 +231,7 @@ const handleSave = async (updatedGrid) => {
     await Promise.all(promises);
     alert('Cambios guardados correctamente.');
     await loadData();
+    await loadFilterData();
 
   } catch (err) {
     console.error('Error guardando equipos:', err);
@@ -150,6 +254,7 @@ const handleDelete = async (idsToDelete) => {
         await Promise.all(deletePromises);
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
+        await loadFilterData();
 
     } catch (err) {
         console.error('Error eliminando equipos:', err);
@@ -162,6 +267,7 @@ const handleDelete = async (idsToDelete) => {
 
 onMounted(() => {
   loadData();
+  loadFilterData();
 });
 </script>
 

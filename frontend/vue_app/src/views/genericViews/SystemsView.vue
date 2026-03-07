@@ -12,8 +12,18 @@
       title="Mantenimiento de Sistemas"
       :headers="headers"
       :data="systemsData"
+      :currentPage="currentPage"
+      :totalPages="totalPages"
+      :totalItems="totalItems"
+      :pageSize="pageSize"
+      :serverSideFiltering="true"
+      :filterData="filterData"
       @save="handleSave"
       @delete="handleDelete"
+      @pageChange="handlePageChange"
+      @pageSizeChange="handlePageSizeChange"
+      @filterChange="handleFilterChange"
+      @sortChange="handleSortChange"
     />
     
     <!-- Indicador de carga -->
@@ -37,30 +47,91 @@ const systemsData = ref([]); // Almacena los datos en formato matriz
 const loading = ref(false);  // Controla la visibilidad del loader
 const error = ref(null);     // Almacena mensajes de error
 
-/**
- * Carga los datos de sistemas desde la API
- */
-const loadData = async () => {
-  loading.value = true;
-  error.value = null;
+// Estado Paginación y Filtrado
+const currentPage = ref(1);
+const totalPages = ref(1);
+const totalItems = ref(0);
+const pageSize = ref(25);
+const currentFilters = ref({});
+const currentSort = ref({ colIndex: null, direction: null });
+const filterData = ref([]); // Datos completos para el popup de filtros
 
-  try {
-    // Petición GET al endpoint de sistemas
-    const response = await api.get('systems/');
-
-    if (Array.isArray(response.data)) {
-        // Transformar array de objetos a matriz de arrays para ExcelGrid
-        // Mapeo: [id, tag, name, description]
-        systemsData.value = response.data.map(s => [
+const loadFilterData = async () => {
+    try {
+        const response = await api.get('systems/', { params: { page_size: 10000 } });
+        const results = response.data.results || response.data;
+        filterData.value = results.map(s => [
             s.id,
             s.tag || '',
             s.name || '',
             s.description || ''
         ]);
-    } else {
-        systemsData.value = [];
-        console.warn('La API no devolvió un array:', response.data);
+    } catch (err) {
+        console.error('Error cargando datos para filtros:', err);
     }
+};
+
+/**
+ * Carga los datos de sistemas desde la API
+ */
+const loadData = async (page = 1) => {
+  loading.value = true;
+  error.value = null;
+
+  try {
+    const params = { 
+        page, 
+        page_size: pageSize.value 
+    };
+
+    const colToFieldMap = {
+        0: 'id',
+        1: 'tag',
+        2: 'name',
+        3: 'description'
+    };
+
+    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
+        const fieldName = colToFieldMap[colIndex];
+        if (fieldName && values.length > 0) {
+            params[`${fieldName}__in`] = values.join(','); 
+        }
+    }
+
+    if (currentSort.value.colIndex !== null) {
+        const fieldName = colToFieldMap[currentSort.value.colIndex];
+        if (fieldName) {
+            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
+        }
+    }
+
+    // Petición GET al endpoint de sistemas
+    const response = await api.get('systems/', { params });
+    const responseData = response.data;
+    let dataArray = [];
+
+    if (responseData && responseData.results) {
+        dataArray = responseData.results;
+        totalItems.value = responseData.count;
+        totalPages.value = Math.ceil(responseData.count / pageSize.value);
+        currentPage.value = page;
+    } else if (Array.isArray(responseData)) {
+        dataArray = responseData;
+        totalItems.value = dataArray.length;
+        totalPages.value = 1;
+        currentPage.value = 1;
+    } else {
+        console.warn('La API no devolvió un formato válido:', responseData);
+    }
+
+    // Transformar array de objetos a matriz de arrays para ExcelGrid
+    // Mapeo: [id, tag, name, description]
+    systemsData.value = dataArray.map(s => [
+        s.id,
+        s.tag || '',
+        s.name || '',
+        s.description || ''
+    ]);
 
   } catch (err) {
     console.error('Error cargando sistemas:', err);
@@ -68,6 +139,25 @@ const loadData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const handlePageChange = (newPage) => {
+    loadData(newPage);
+};
+
+const handlePageSizeChange = (newSize) => {
+    pageSize.value = newSize;
+    loadData(1);
+};
+
+const handleFilterChange = (filters) => {
+    currentFilters.value = filters;
+    loadData(1);
+};
+
+const handleSortChange = (sortConfig) => {
+    currentSort.value = sortConfig;
+    loadData(1);
 };
 
 /**
@@ -105,6 +195,7 @@ const handleSave = async (updatedGrid) => {
 
     // Recargar datos para obtener IDs nuevos y asegurar sincronización
     await loadData();
+    await loadFilterData();
 
   } catch (err) {
     console.error('Error guardando sistemas:', err);
@@ -127,12 +218,13 @@ const handleDelete = async (idsToDelete) => {
         await Promise.all(deletePromises);
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
+        await loadFilterData();
 
     } catch (err) {
         console.error('Error eliminando sistemas:', err);
         alert('Error al eliminar las filas.');
-        await loadData();
     } finally {
+        await loadData();
         loading.value = false;
     }
 };
@@ -140,6 +232,7 @@ const handleDelete = async (idsToDelete) => {
 // Cargar datos al montar el componente
 onMounted(() => {
   loadData();
+  loadFilterData();
 });
 </script>
 

@@ -1,27 +1,48 @@
 <!--
   AssaysView.vue
   Vista de Mantenimiento de Ensayos usando ExcelGrid.
-  Muestra ensayos filtrados inicialmente por Equipo ID=1.
+  Muestra ensayos filtrados dinámicamente por Equipo seleccionado.
+  Solo muestra equipos del sistema "Analizadores".
+  Selecciona por defecto el equipo con actividad más reciente.
 -->
 <template>
   <section class="assays-view">
     <header class="view-header">
-      <h1>Mantenimiento de Ensayos (Equipo 1)</h1>
+      <h1>Mantenimiento de Ensayos</h1>
+
       <div class="header-actions">
+        <!-- Selector de Equipo -->
+        <select
+          v-model="selectedEquipmentId"
+          @change="handleEquipmentChange"
+          class="equipment-select"
+          :disabled="loading"
+        >
+          <option :value="null" disabled>-- Seleccione un Analizador --</option>
+          <option
+            v-for="eq in equipmentsList"
+            :key="eq.id"
+            :value="eq.id"
+          >
+            <!-- MODIFICADO: Formato "Nombre - Descripción" -->
+            {{ eq.name }} {{ eq.description ? `- ${eq.description}` : '' }}
+          </option>
+        </select>
+
         <!-- Filtro rápido por fecha -->
         <input 
           type="date" 
           v-model="filterDate" 
           class="date-filter"
           title="Filtrar por fecha"
-          @change="loadData"
+          @change="loadData(1)"
         />
 
         <button
           type="button"
           class="btn btn-blue"
-          @click="loadData"
-          :disabled="loading"
+          @click="loadData(1)"
+          :disabled="loading || !selectedEquipmentId"
         >
           {{ loading ? 'Cargando...' : 'Recargar Datos' }}
         </button>
@@ -30,11 +51,15 @@
 
     <p v-if="error" class="feedback error">{{ error }}</p>
 
+    <p v-if="!selectedEquipmentId && !loading" class="feedback info">
+      Por favor, seleccione un analizador para ver sus ensayos.
+    </p>
+
     <!-- Componente ExcelGrid -->
-    <div class="grid-wrapper">
+    <div class="grid-wrapper" v-if="selectedEquipmentId">
       <ExcelGrid
         v-if="!loading"
-        title="Ensayos - Equipo 1"
+        :title="gridTitle"
         :headers="gridHeaders"
         :data="gridData"
         :columnsConfig="gridConfig"
@@ -68,18 +93,20 @@ const filterDate = ref('');
 const rawAssays = ref([]);
 const samplesList = ref([]);
 
-// --- Estado Paginación y Filtrado (Nuevo) ---
+// Estado para manejo de Equipos
+const equipmentsList = ref([]);
+const selectedEquipmentId = ref(null);
+
+// --- Estado Paginación y Filtrado ---
 const currentPage = ref(1);
 const totalPages = ref(1);
 const totalItems = ref(0);
-const pageSize = ref(25); // Debe coincidir razonablemente con el Backend o usarse si el Back lo requiere
+const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 const filterData = ref([]);
 
 // --- Configuración de la Grilla ---
-
-// 1. Definición de Encabezados (Orden visual de columnas)
 const gridHeaders = [
   'ID', 'Chemical ID', 'Muestra', 'Fecha', 'Hora', 'Instancia',
   'A1 Fe', 'A2 Cu', 'A3 Zn', 'A4 Mo', 'A5 A5', 'A6 Sol', 'A7 A7',
@@ -89,8 +116,6 @@ const gridHeaders = [
   'User P', 'Meta User'
 ];
 
-// 2. Mapeo de índices de columna a claves del objeto API
-// Esto es crucial para traducir de Array (Grilla) <-> Objeto (API)
 const colKeys = [
   'id', 'chemical_id', 'sample', 'date', 'time', 'instance',
   'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7',
@@ -100,66 +125,145 @@ const colKeys = [
   'userp', 'meta_user'
 ];
 
-// 3. Configuración de columnas especiales (Selects, ReadOnly, etc.)
+const gridTitle = computed(() => {
+    if (!selectedEquipmentId.value) return 'Ensayos';
+    const eq = equipmentsList.value.find(e => e.id === selectedEquipmentId.value);
+    return eq ? `Ensayos - ${eq.name}` : 'Ensayos';
+});
+
 const gridConfig = computed(() => {
-  // Construir opciones para el select de Muestras
   const sampleOptions = samplesList.value.map(s => ({
     value: s.id,
     label: s.name || s.tag || `ID ${s.id}`
   }));
 
   return {
-    0: { readOnly: true }, // ID no editable
-    2: { type: 'select', options: sampleOptions }, // Columna 'Muestra' es un Select
-    // Se pueden agregar más configuraciones aquí si es necesario
+    0: { readOnly: true },
+    2: { type: 'select', options: sampleOptions },
   };
 });
 
-// --- Computed Data para la Grilla ---
-// Transforma los objetos de la API en Arrays para ExcelGrid
 const gridData = computed(() => {
   return rawAssays.value.map(assay => {
     return colKeys.map(key => {
-      // Manejo especial para campos anidados o nulos
       if (key === 'sample' && typeof assay[key] === 'object' && assay[key] !== null) {
-        return assay[key].id; // Extraer ID si viene objeto completo
+        return assay[key].id;
       }
       return assay[key] === null || assay[key] === undefined ? '' : assay[key];
     });
   });
 });
 
+// --- Carga de Equipos (Filtrado por Sistema "Analizadores") ---
+const loadEquipments = async () => {
+    try {
+        // 1. Buscar el ID del sistema "Analizadores"
+        // Usamos 'icontains' para ser más flexibles con mayúsculas/minúsculas o nombres parciales
+        const systemRes = await api.get('systems/', { params: { name__icontains: 'Analizadores' } });
+        const systems = systemRes.data.results || systemRes.data;
+
+        if (!systems || systems.length === 0) {
+            console.warn('No se encontró el sistema "Analizadores". Cargando todos los equipos.');
+            // Fallback: Cargar todos si no existe el sistema
+            const allEqRes = await api.get('equipments/', { params: { page_size: 1000 } });
+            equipmentsList.value = allEqRes.data.results || allEqRes.data;
+        } else {
+            // Tomamos el primer sistema que coincida (idealmente solo debería haber uno)
+            const analyzerSystemId = systems[0].id;
+
+            // 2. Cargar equipos que pertenecen a ese sistema
+            const eqRes = await api.get('equipments/', {
+                params: {
+                    system: analyzerSystemId,
+                    page_size: 1000
+                }
+            });
+            equipmentsList.value = eqRes.data.results || eqRes.data;
+        }
+
+        // 3. Seleccionar equipo por defecto (Lógica "Más Reciente" o Primero)
+        if (equipmentsList.value.length > 0 && !selectedEquipmentId.value) {
+             let targetEqId = null;
+
+             try {
+                 // Buscar ensayo más reciente
+                 const recentRes = await api.get('assays/', { params: { ordering: '-date', page_size: 1 } });
+                 const recentItems = recentRes.data.results || recentRes.data;
+
+                 if (recentItems.length > 0 && recentItems[0].sample) {
+                     const sId = (typeof recentItems[0].sample === 'object') ? recentItems[0].sample.id : recentItems[0].sample;
+                     const sampleRes = await api.get(`samples/${sId}/`);
+                     targetEqId = sampleRes.data.equipment;
+                 }
+             } catch (ignore) {
+                 console.warn("No se pudo determinar el equipo más reciente.");
+             }
+
+             // Verificar si el equipo reciente está en nuestra lista FILTRADA
+             if (targetEqId && equipmentsList.value.find(e => e.id === targetEqId)) {
+                 selectedEquipmentId.value = targetEqId;
+             } else {
+                 // Fallback: Primer equipo de la lista filtrada
+                 selectedEquipmentId.value = equipmentsList.value[0].id;
+             }
+
+             // 4. Cargar datos
+             loadData(1);
+             loadFilterData();
+        } else if (equipmentsList.value.length === 0) {
+            error.value = 'No se encontraron equipos en el sistema "Analizadores".';
+        }
+
+    } catch (err) {
+        console.error("Error cargando equipos:", err);
+        error.value = "Error al cargar la lista de analizadores.";
+    }
+};
+
+const handleEquipmentChange = () => {
+    currentPage.value = 1;
+    currentFilters.value = {};
+    currentSort.value = { colIndex: null, direction: null };
+    loadData(1);
+    loadFilterData();
+};
+
 // --- Carga de Datos ---
 const loadFilterData = async () => {
+    if (!selectedEquipmentId.value) return;
     try {
         const params = {
-            sample__equipment: 1, // FILTRO FIJO: Solo equipo ID 1
-            page_size: 10000
+            sample__equipment: selectedEquipmentId.value,
+            page_size: 5000
         };
         const response = await api.get('assays/', { params });
         const results = response.data.results || response.data;
-        filterData.value = results.map(assay => {
-            return colKeys.map(key => {
-                if (key === 'sample' && typeof assay[key] === 'object' && assay[key] !== null) {
-                    return assay[key].id;
-                }
-                return assay[key] === null || assay[key] === undefined ? '' : assay[key];
+
+        if (Array.isArray(results)) {
+            filterData.value = results.map(assay => {
+                return colKeys.map(key => {
+                    if (key === 'sample' && typeof assay[key] === 'object' && assay[key] !== null) {
+                        return assay[key].id;
+                    }
+                    return assay[key] === null || assay[key] === undefined ? '' : assay[key];
+                });
             });
-        });
+        }
     } catch (err) {
         console.error('Error cargando datos para filtros:', err);
     }
 };
 
 const loadData = async (page = 1) => {
+  if (!selectedEquipmentId.value) return;
+
   loading.value = true;
   error.value = null;
   
   try {
-    // Construir parámetros de consulta para la API
     const params = {
-      sample__equipment: 1, // FILTRO FIJO: Solo equipo ID 1
-      page: page,           // Enviar el número de página al servidor (Nuevo)
+      sample__equipment: selectedEquipmentId.value,
+      page: page,
       page_size: pageSize.value
     };
     
@@ -167,7 +271,6 @@ const loadData = async (page = 1) => {
       params.date = filterDate.value;
     }
 
-    // Aplicar filtros dinámicos del ExcelGrid
     for (const [colIndex, values] of Object.entries(currentFilters.value)) {
         const fieldName = colKeys[colIndex];
         if (fieldName && values.length > 0) {
@@ -175,7 +278,6 @@ const loadData = async (page = 1) => {
         }
     }
 
-    // Aplicar ordenamiento dinámico del ExcelGrid
     if (currentSort.value.colIndex !== null) {
         const fieldName = colKeys[currentSort.value.colIndex];
         if (fieldName) {
@@ -185,30 +287,24 @@ const loadData = async (page = 1) => {
 
     const [assaysRes, samplesRes] = await Promise.all([
       api.get('assays/', { params }),
-      // Solicitamos todas las muestras del equipo 1 sin paginar para contar con el listado completo en el <select> de edición
-      api.get('samples/', { params: { equipment: 1, page_size: 10000 } })
+      api.get('samples/', { params: { equipment: selectedEquipmentId.value, page_size: 10000 } })
     ]);
 
-    // La API de Django REST Framework con paginación devuelve: { count, next, previous, results }
     const responseData = assaysRes.data;
     
     if (responseData && responseData.results) {
-        // Modo Paginado (Backend)
         rawAssays.value = responseData.results;
         totalItems.value = responseData.count;
         totalPages.value = Math.ceil(responseData.count / pageSize.value);
         currentPage.value = page;
     } else {
-        // Respaldo por si la paginación global no se aplicó o es una lista plana
         rawAssays.value = Array.isArray(responseData) ? responseData : [];
         totalItems.value = rawAssays.value.length;
         totalPages.value = 1;
         currentPage.value = 1;
     }
 
-    // Si la API de samples no soporta filtro, cargar todas (fallback)
-    // Idealmente samplesRes.data debería venir filtrado o ser pocos
-    samplesList.value = Array.isArray(samplesRes.data) ? samplesRes.data : 
+    samplesList.value = Array.isArray(samplesRes.data) ? samplesRes.data :
                         (samplesRes.data.results ? samplesRes.data.results : []);
 
   } catch (err) {
@@ -219,66 +315,44 @@ const loadData = async (page = 1) => {
   }
 };
 
-// --- Manejador de evento de Paginación y Filtros (Nuevo) ---
-const handlePageChange = (newPage) => {
-    loadData(newPage);
-};
+const handlePageChange = (newPage) => { loadData(newPage); };
+const handlePageSizeChange = (newSize) => { pageSize.value = newSize; loadData(1); };
+const handleFilterChange = (filters) => { currentFilters.value = filters; loadData(1); };
+const handleSortChange = (sortConfig) => { currentSort.value = sortConfig; loadData(1); };
 
-const handlePageSizeChange = (newSize) => {
-    pageSize.value = newSize;
-    loadData(1);
-};
-
-const handleFilterChange = (filters) => {
-    currentFilters.value = filters;
-    loadData(1);
-};
-
-const handleSortChange = (sortConfig) => {
-    currentSort.value = sortConfig;
-    loadData(1);
-};
-
-// --- Guardado (Batch Update) ---
+// --- Guardado ---
 const handleSave = async (gridRows) => {
+  if (!selectedEquipmentId.value) {
+      alert("Debe seleccionar un equipo antes de guardar.");
+      return;
+  }
+
   loading.value = true;
   error.value = '';
 
   try {
     const promises = [];
 
-    // Iterar sobre las filas de la grilla
     for (const row of gridRows) {
-      // Convertir Array de grilla a Objeto API
       const payload = {};
       colKeys.forEach((key, index) => {
         let val = row[index];
-        // Convertir strings vacíos a null para campos numéricos/fechas si es necesario
         if (val === '') val = null;
         payload[key] = val;
       });
 
       const id = payload.id;
 
-      // Determinar si es Crear o Actualizar
       if (id && String(id).toLowerCase() !== 'nuevo' && id !== '') {
-        // UPDATE
         promises.push(api.put(`assays/${id}/`, payload));
       } else {
-        // CREATE
-        // Eliminar ID temporal o vacío para que el backend asigne uno nuevo
         delete payload.id;
-        // Asegurar que tenga el equipo correcto indirectamente a través de la muestra
-        // (El usuario debe seleccionar una muestra válida del equipo 1)
         promises.push(api.post('assays/', payload));
       }
     }
 
-    // Ejecutar todas las peticiones
     await Promise.all(promises);
-    
-    // Recargar datos para ver cambios y nuevos IDs
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
     alert('Cambios guardados exitosamente.');
 
@@ -296,7 +370,7 @@ const handleDelete = async (idsToDelete) => {
   try {
     const promises = idsToDelete.map(id => api.delete(`assays/${id}/`));
     await Promise.all(promises);
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
     alert('Registros eliminados.');
   } catch (err) {
@@ -308,8 +382,7 @@ const handleDelete = async (idsToDelete) => {
 };
 
 onMounted(() => {
-  loadData();
-  loadFilterData();
+  loadEquipments();
 });
 </script>
 
@@ -331,6 +404,15 @@ onMounted(() => {
 .header-actions {
   display: flex;
   gap: 10px;
+  align-items: center;
+}
+
+.equipment-select {
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    min-width: 300px; /* Aumentado para acomodar nombre + descripción */
+    font-size: 1rem;
 }
 
 .date-filter {
@@ -341,7 +423,7 @@ onMounted(() => {
 
 .grid-wrapper {
   flex-grow: 1;
-  overflow: hidden; /* El scroll lo maneja ExcelGrid */
+  overflow: hidden;
 }
 
 .loading-text {
@@ -356,5 +438,13 @@ onMounted(() => {
   background: #fee2e2;
   padding: 10px;
   border-radius: 4px;
+}
+
+.feedback.info {
+    color: #1e40af;
+    background-color: #dbeafe;
+    padding: 10px;
+    border-radius: 4px;
+    text-align: center;
 }
 </style>

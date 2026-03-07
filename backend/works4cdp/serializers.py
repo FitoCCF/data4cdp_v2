@@ -55,11 +55,21 @@ class VTaskPSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-
 class UserPSerializer(serializers.ModelSerializer):
+    # Para LECTURA (GET): Anida el objeto User completo (con nombre, email, etc.)
+    # Esto permite al frontend mostrar información útil.
+    user = UserSerializer(read_only=True)
+    
+    # Para ESCRITURA (POST/PUT): Acepta solo el ID del usuario.
+    # 'source="user"' mapea este campo al campo 'user' del modelo.
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), source='user', write_only=True
+    )
+
     class Meta:
         model = UserP
-        fields = '__all__'
+        # Definimos explícitamente los campos para incluir los campos virtuales 'user' y 'user_id'
+        fields = ('id', 'year', 'week', 'day', 'date', 'state', 'turn', 'user', 'user_id')
 
 
 class SampleSerializer(serializers.ModelSerializer):

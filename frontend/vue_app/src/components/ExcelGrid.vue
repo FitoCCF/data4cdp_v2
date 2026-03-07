@@ -23,13 +23,13 @@
           :class="isEditMode ? 'btn-gray' : 'btn-blue'"
           @click="toggleEditMode"
         >
-          {{ isEditMode ? '🔒 Bloquear Edición' : '✏️ Habilitar Edición' }}
+          {{ isEditMode ? 'Bloquear Edición' : 'Habilitar Edición' }}
         </button>
 
         <!-- Botones visibles solo en modo edición -->
         <template v-if="isEditMode">
           <!-- Botón para agregar una nueva fila al final -->
-          <button class="btn btn-blue btn-sm" @click="addRow">➕ Fila</button>
+          <button class="btn btn-blue btn-sm" @click="addRow">Fila</button>
 
           <!-- Botón para eliminar filas seleccionadas -->
           <!-- Se deshabilita si no hay filas seleccionadas -->
@@ -38,44 +38,13 @@
             @click="deleteSelectedRows"
             :disabled="selectedRowIndices.size === 0"
           >
-            🗑️ Eliminar ({{ selectedRowIndices.size }})
+            Eliminar ({{ selectedRowIndices.size }})
           </button>
 
           <!-- Botón para guardar todos los cambios -->
-          <button class="btn btn-green btn-sm" @click="promptSave">💾 Guardar Cambios</button>
+          <button class="btn btn-green btn-sm" @click="promptSave">Guardar Cambios</button>
         </template>
       </div>
-    </div>
-
-    <!-- CONTROLES DE PAGINACIÓN (NUEVO) -->
-    <div class="pagination-controls" v-if="totalPages > 1 || totalItems > 0">
-        <button 
-          class="btn btn-sm" 
-          :disabled="currentPage === 1" 
-          @click="changePage(currentPage - 1)">
-          &laquo; Anterior
-        </button>
-        
-        <span class="page-info">
-          Página {{ currentPage }} de {{ totalPages }} (Total: {{ totalItems }})
-        </span>
-
-        <!-- Selector de tamaño de página -->
-        <select class="page-size-selector" :value="pageSize" @change="changePageSize($event)">
-          <option :value="25">25 / página</option>
-          <option :value="50">50 / página</option>
-          <option :value="100">100 / página</option>
-          <option :value="200">200 / página</option>
-          <option :value="500">500 / página</option>
-          <option :value="10000">Todos</option>
-        </select>
-
-        <button 
-          class="btn btn-sm" 
-          :disabled="currentPage === totalPages || totalPages === 0" 
-          @click="changePage(currentPage + 1)">
-          Siguiente &raquo;
-        </button>
     </div>
 
     <!-- CONTENEDOR DE LA TABLA (SCROLLABLE) -->
@@ -106,7 +75,7 @@
                   :class="{ 'active': activeFilters[index] }"
                   @click.stop="toggleFilterMenu(index, $event)"
                 >
-                  {{ activeFilters[index] ? '🌪️' : '▼' }}
+                  {{ activeFilters[index] ? 'Filtro' : '▼' }}
                 </span>
               </div>
               <!-- Redimensionador de columna (solo en modo edición) -->
@@ -201,6 +170,37 @@
       </table>
     </div>
 
+    <!-- CONTROLES DE PAGINACIÓN (MOVIDO AL FINAL) -->
+    <div class="pagination-controls" v-if="totalPages > 1 || totalItems > 0">
+        <button
+          class="btn btn-sm"
+          :disabled="currentPage === 1"
+          @click="changePage(currentPage - 1)">
+          Anterior
+        </button>
+
+        <span class="page-info">
+          Página {{ currentPage }} de {{ totalPages }} (Total: {{ totalItems }})
+        </span>
+
+        <!-- Selector de tamaño de página -->
+        <select class="page-size-selector" :value="pageSize" @change="changePageSize($event)">
+          <option :value="25">25 / página</option>
+          <option :value="50">50 / página</option>
+          <option :value="100">100 / página</option>
+          <option :value="200">200 / página</option>
+          <option :value="500">500 / página</option>
+          <option :value="10000">Todos</option>
+        </select>
+
+        <button
+          class="btn btn-sm"
+          :disabled="currentPage === totalPages || totalPages === 0"
+          @click="changePage(currentPage + 1)">
+          Siguiente
+        </button>
+    </div>
+
     <!-- MENÚ DESPLEGABLE DE FILTRO -->
     <div
       v-if="openMenuIndex !== null"
@@ -209,8 +209,8 @@
       @click.stop
     >
       <div class="menu-actions">
-        <button class="menu-btn" @click="sortColumn(openMenuIndex, 'asc')">⬆️ Ordenar A a Z</button>
-        <button class="menu-btn" @click="sortColumn(openMenuIndex, 'desc')">⬇️ Ordenar Z a A</button>
+        <button class="menu-btn" @click="sortColumn(openMenuIndex, 'asc')">Ordenar A a Z</button>
+        <button class="menu-btn" @click="sortColumn(openMenuIndex, 'desc')">Ordenar Z a A</button>
       </div>
       <div class="menu-divider"></div>
       <div class="menu-search">
@@ -337,7 +337,7 @@ const getFilterLabel = (colIndex, value) => {
 const filteredGrid = computed(() => {
     let result = localGrid.value.map((row, index) => ({ row, originalIndex: index }));
 
-    // Si el filtrado o ordenamiento lo hace el backend, simplemente retornamos los datos tal cual
+    // Si el filtrado u ordenamiento lo hace el backend, simplemente retornamos los datos tal cual
     if (props.serverSideFiltering) {
         return result;
     }
@@ -738,7 +738,7 @@ onMounted(() => { initGrid(); });
 .status-read { background-color: #e5e7eb; color: #374151; border: 1px solid #d1d5db; }
 .status-edit { background-color: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
 .actions { display: flex; gap: 10px; align-items: center; }
-.pagination-controls { display: flex; justify-content: center; align-items: center; gap: 15px; padding-bottom: 10px; border-bottom: 1px solid #eee; margin-bottom: 10px; flex-wrap: wrap;}
+.pagination-controls { display: flex; justify-content: center; align-items: center; gap: 15px; padding-top: 10px; border-top: 1px solid #eee; margin-top: 10px; flex-wrap: wrap;}
 .page-info { font-size: 0.9rem; color: #555; font-weight: 500; }
 .page-size-selector { padding: 4px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; cursor: pointer; }
 .table-wrapper { overflow: auto; border: 1px solid #ccc; flex-grow: 1; position: relative; background-color: #f9f9f9; }

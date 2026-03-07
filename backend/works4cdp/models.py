@@ -69,12 +69,13 @@ class User(models.Model):
 
 
 class UserP(models.Model):
-    user = models.ForeignKey(User, on_delete=models.CASCADE)  # Si User se elimina, también se borra UserP
+    #user = models.ForeignKey(User, on_delete=models.CASCADE)  # Si User se elimina, también se borra UserP
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     year = models.IntegerField()  # Año
     week = models.IntegerField()
     day = models.CharField(max_length=20)  # Día de la semana (Ejemplo: "Lunes")
     date = models.DateField()  # Fecha en formato YYYY-MM-DD
-    state = models.CharField(max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
+    state = models.CharField(null=True, max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
     turn = models.CharField(max_length=10)  # Turno (Ejemplo: "A", "B", "C")
 
     class Meta:

@@ -56,6 +56,8 @@ class Task(models.Model):
     class Meta:
         ordering = ['-id']
 
+class UserP(models.Model):
+    name = models.CharField(max_length=20)
 
 class User(models.Model):
     auth_user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, null=True, blank=True)
@@ -63,27 +65,51 @@ class User(models.Model):
     apellido = models.CharField(max_length=50)
     email = models.EmailField(unique=True)
     rol = models.CharField(max_length=50, null=True, blank=True)
+    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
 
     class Meta:
         ordering = ['-id']
 
 
-class UserP(models.Model):
-    #user = models.ForeignKey(User, on_delete=models.CASCADE)  # Si User se elimina, también se borra UserP
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+
+class Calendar(models.Model):
+    #user = models.ForeignKey(User, on_delete=models.CASCADE)  # Si User se elimina, también se borra User
+    #user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     year = models.IntegerField()  # Año
     week = models.IntegerField()
     day = models.CharField(max_length=20)  # Día de la semana (Ejemplo: "Lunes")
     date = models.DateField()  # Fecha en formato YYYY-MM-DD
-    state = models.CharField(null=True, max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
-    turn = models.CharField(max_length=10)  # Turno (Ejemplo: "A", "B", "C")
+    #state = models.CharField(null=True, max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
+    turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
+    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
+
+    overtime = models.IntegerField(default=0)
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="Exception_calendar",
+        db_column="id_user"
+    )
+
+    class Meta:
+        ordering = ['-date', 'group']
+
+    def __str__(self):
+        tipo = f"Grupo: {self.group}" if self.group else f"Usuario: {self.user}"
+        return f"{self.date} - {tipo} ({self.turn})"
+    #def __str__(self):
+    #    return f"{self.user.nombre} - {self.date} - {self.turn}"
+
+
+class TaskGroupAssignment(models.Model):
+    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    calendar = models.ForeignKey(Calendar, on_delete=models.CASCADE)
 
     class Meta:
         ordering = ['-id']
-
-    def __str__(self):
-        return f"{self.user.nombre} - {self.date} - {self.turn}"
-
 
 
 class TaskP(models.Model):
@@ -94,7 +120,7 @@ class TaskP(models.Model):
     date = models.DateField()
   #  turn = models.CharField(max_length=10, null=True, blank=True)
    # usuario = models.IntegerField(null=True, blank=True)
-    usuario = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True)
+    #group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
     rescheduled = models.BooleanField(default=False)
     reschedule_reason = models.TextField(null=True, blank=True)
     reschedule_date = models.DateField(null=True, blank=True)
@@ -112,7 +138,7 @@ class CorrectiveTask(models.Model):
     week = models.IntegerField(null=True, blank=True)
     day = models.CharField(max_length=20, null=True, blank=True)
     date = models.DateField(null=True, blank=True)
-    usuario = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True)
+    #group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
     equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE)
     description = models.TextField()
     creation_date = models.DateField()
@@ -122,7 +148,7 @@ class CorrectiveTask(models.Model):
     completion_date = models.DateField(null=True, blank=True)
     root_cause = models.TextField(null=True, blank=True)
     comments = models.TextField(null=True, blank=True)
-    turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
+    #turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
 
     class Meta:
         ordering = ['-id']
@@ -171,7 +197,7 @@ class Assay(models.Model):
     a5a5 = models.FloatField(null=True, blank=True)
     a6sol = models.FloatField(null=True, blank=True)
     a7a7 = models.FloatField(null=True, blank=True)
-    userp = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     meta_user = models.CharField(max_length=50, null=True, blank=True)
 
     class Meta:
@@ -253,12 +279,10 @@ class AssaysPsi(models.Model):
     a900_950_um = models.FloatField(null=True, blank=True)
     a950_1000_um = models.FloatField(null=True, blank=True)
     a1000_n_um = models.FloatField(null=True, blank=True)
-    userp = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
     meta_user = models.CharField(max_length=50, null=True, blank=True)
     sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True)
     turn = models.CharField(max_length=10, null=True, blank=True)
 
     class Meta:
         ordering = ['-id']
-
-

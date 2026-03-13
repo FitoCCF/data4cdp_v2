@@ -104,34 +104,45 @@ class Calendar(models.Model):
     #    return f"{self.user.nombre} - {self.date} - {self.turn}"
 
 
-class TaskGroupAssignment(models.Model):
+
+class TaskP(models.Model):
+    # Relación con la plantilla maestra de la tarea de mantenimiento
     task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    
+    # --- DATOS DE PROGRAMACIÓN ORIGINAL ---
+    year = models.IntegerField()              # Año en el que se programó ejecutar
+    week = models.IntegerField()              # Semana extendida (histórica) de ejecución
+    day = models.CharField(max_length=20)     # Nombre del día de la semana (Ej. 'Lunes')
+    date = models.DateField()                 # Fecha exacta planificada originalmente (Ej: 2026-03-11)
+    
+    # --- DATOS DE EJECUCIÓN REAL (NUEVOS) ---
+    estado = models.ForeignKey(Estado, on_delete=models.CASCADE, default=1) # 1=Pendiente, 2=Realizada, 3=Cancelada
+    completion_date = models.DateTimeField(null=True, blank=True)           # Timestamp real en el que el operario marcó la tarea como terminada
+    comments = models.TextField(null=True, blank=True)                      # Observaciones recolectadas en terreno al cerrar la tarea
+    
+    # --- CONTROL DE EXCEPCIONES Y REPROGRAMACIÓN ---
+    rescheduled = models.BooleanField(default=False)                        # Bandera. True = esta tarea no se hizo cuando tocaba y fue movida
+    reschedule_date = models.DateField(null=True, blank=True)               # La nueva fecha hacia la que fue desplazada esta tarea
+    reschedule_reason = models.TextField(null=True, blank=True)             # Justificación del supervisor para mover la tarea
+    reschedule_user_id = models.IntegerField(null=True, blank=True)         # ID del usuario/supervisor que autorizó el movimiento
+    
+    # Bandera estructural: 
+    #   False = Solo se movió este evento en particular.
+    #   True  = Se movió este evento Y la fecha semilla (start_date) en la tabla 'Task' madre se actualizó.
+    is_permanent_reschedule = models.BooleanField(default=False)
+
+    # --- METADATOS ---
+    priority = models.IntegerField(null=True, blank=True, default=1)        # Nivel de urgencia de la tarea (ej. 1=Normal, 2=Alta)
+
+    class Meta:
+        ordering = ['-id']
+
+class TaskGroupAssignment(models.Model):
+    taskp = models.ForeignKey(TaskP, on_delete=models.CASCADE)
     calendar = models.ForeignKey(Calendar, on_delete=models.CASCADE)
 
     class Meta:
         ordering = ['-id']
-
-
-class TaskP(models.Model):
-    task = models.ForeignKey(Task, on_delete=models.CASCADE)
-    year = models.IntegerField()
-    week = models.IntegerField()
-    day = models.CharField(max_length=20)
-    date = models.DateField()
-  #  turn = models.CharField(max_length=10, null=True, blank=True)
-   # usuario = models.IntegerField(null=True, blank=True)
-    #group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
-    rescheduled = models.BooleanField(default=False)
-    reschedule_reason = models.TextField(null=True, blank=True)
-    reschedule_date = models.DateField(null=True, blank=True)
-    reschedule_user_id = models.IntegerField(null=True, blank=True)
-    estado = models.ForeignKey(Estado, on_delete=models.CASCADE)
-    priority = models.IntegerField(null=True, blank=True)
-    #equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, null=True, blank=True)
-
-    class Meta:
-        ordering = ['-id']
-
 
 class CorrectiveTask(models.Model):
     year = models.IntegerField(null=True, blank=True)

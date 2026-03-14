@@ -6,6 +6,9 @@ class Estado(models.Model):
 
     class Meta:
         ordering = ['-id']
+    
+    def __str__(self):
+        return self.estado_nombre
 
 class Plant(models.Model):
     tag = models.CharField(max_length=10)
@@ -55,9 +58,15 @@ class Task(models.Model):
 
     class Meta:
         ordering = ['-id']
+    
+    def __str__(self):
+        return self.name
 
 class UserP(models.Model):
     name = models.CharField(max_length=20)
+    
+    def __str__(self):
+        return self.name
 
 class User(models.Model):
     auth_user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, null=True, blank=True)
@@ -69,6 +78,9 @@ class User(models.Model):
 
     class Meta:
         ordering = ['-id']
+    
+    def __str__(self):
+        return f"{self.nombre} {self.apellido}"
 
 
 
@@ -126,6 +138,9 @@ class TaskP(models.Model):
     reschedule_reason = models.TextField(null=True, blank=True)             # Justificación del supervisor para mover la tarea
     reschedule_user_id = models.IntegerField(null=True, blank=True)         # ID del usuario/supervisor que autorizó el movimiento
     
+    # Usuario asignado (opcional, si es diferente al calendario por defecto o para override)
+    usuario = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True)
+
     # Bandera estructural: 
     #   False = Solo se movió este evento en particular.
     #   True  = Se movió este evento Y la fecha semilla (start_date) en la tabla 'Task' madre se actualizó.
@@ -177,7 +192,6 @@ class Sample(models.Model):
     def __str__(self):
         return f"{self.tag} - {self.name}"
 
-
 class Assay(models.Model):
     date = models.DateField(null=True, blank=True)
     time = models.TimeField(null=True, blank=True)
@@ -213,6 +227,8 @@ class Assay(models.Model):
 
     class Meta:
         ordering = ['-id']
+
+
 
 class VTaskP(models.Model):
     planta = models.CharField(max_length=255)

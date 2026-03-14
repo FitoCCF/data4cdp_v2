@@ -80,6 +80,8 @@ const gridHeaders = [
 ];
 
 // 2. Claves de API
+// NOTA: Estas claves deben coincidir con los campos retornados por el API para visualización,
+// y se usan para construir los parámetros de filtro (e.g. task__in=...).
 const colKeys = [
   'id', 'task', 'year', 'week', 'day', 'date',
   'usuario', 'estado', 'priority', 'rescheduled',
@@ -164,7 +166,8 @@ const loadFilterData = async () => {
                 let val = item[key];
                 if (val && typeof val === 'object') val = val.id;
                 if (typeof val === 'boolean') val = val ? 'true' : 'false';
-                return val === null || val === undefined ? '' : val;
+                // Asegurar conversión a String para consistencia con ExcelGrid
+                return val === null || val === undefined ? '' : String(val);
             });
         });
     } catch (err) {
@@ -186,13 +189,24 @@ const loadData = async (page = 1) => {
     // Aplicar filtros dinámicos
     for (const [colIndex, values] of Object.entries(currentFilters.value)) {
         const fieldName = colKeys[colIndex];
-        // Mapeo especial para campos que son FK pero en filtro se envían como ID
-        // DRF suele aceptar 'campo' o 'campo_id' dependiendo de la configuración
-        if (fieldName && values.length > 0) {
-            // Nota: Para campos numéricos/FK, DRF espera valores exactos.
-            // Para strings, 'in' funciona bien.
-            // Aquí asumimos que el backend soporta filtrado por estos campos.
-            // Si el backend usa django-filter, 'campo__in' es estándar.
+
+        if (fieldName && values) {
+            // Caso 1: El usuario deseleccionó TODO en el filtro -> No mostrar resultados.
+            // Si values está vacío, significa que el filtro está activo (la clave existe en currentFilters)
+            // pero no hay valores permitidos.
+            if (values.length === 0) {
+                rawTasksP.value = [];
+                totalItems.value = 0;
+                totalPages.value = 1;
+                loading.value = false;
+                return;
+            }
+
+            // Caso 2: Hay valores seleccionados.
+            // Enviamos los valores separados por coma.
+            // Usamos values.join(',') directamente para incluir todos los valores seleccionados.
+            // Nota: Si values incluye strings vacíos (''), estos se enviarán.
+            // El backend y django-filter deben manejar 'campo__in=valor,' o 'campo__in=,valor' adecuadamente.
             params[`${fieldName}__in`] = values.join(',');
         }
     }

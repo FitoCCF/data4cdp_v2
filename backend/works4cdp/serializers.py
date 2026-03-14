@@ -33,9 +33,42 @@ class TaskSerializer(serializers.ModelSerializer):
         model = Task
         fields = '__all__'
 
+class UserPSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserP
+        fields = '__all__'
+
 class TaskPSerializer(serializers.ModelSerializer):
+    # En vista STasksViews.vue, el frontend espera que 'task' sea un objeto para ver su nombre (task.name)
+    # y en otras partes lo maneja como ID.
+    # El modelo TaskP tiene FK 'task'.
+    # Si serializamos solo el ID, el frontend no puede mostrar 'Tarea X' (nombre).
+    # Necesitamos anidar Task en GET o enviar un campo extra 'task_name'.
+    
+    # Solucion: TaskReadSerializer para GET y TaskWriteSerializer para POST/PUT
+    # O usar to_representation.
+    
+    task = TaskSerializer(read_only=True)
+    task_id = serializers.PrimaryKeyRelatedField(
+        queryset=Task.objects.all(), source='task', write_only=True
+    )
+    
+    # Lo mismo para UserP y Estado
+    usuario = UserPSerializer(read_only=True)
+    usuario_id = serializers.PrimaryKeyRelatedField(
+        queryset=UserP.objects.all(), source='usuario', write_only=True, allow_null=True
+    )
+    
+    estado = EstadoSerializer(read_only=True)
+    estado_id = serializers.PrimaryKeyRelatedField(
+        queryset=Estado.objects.all(), source='estado', write_only=True
+    )
+
     class Meta:
         model = TaskP
+        # 'fields' debe incluir los campos de escritura (_id) explícitamente si usamos '__all__'
+        # pero como estamos redefiniendo 'task', 'usuario', 'estado' que coinciden con los nombres del modelo,
+        # DRF los usa. Los campos '_id' son adicionales y write_only.
         fields = '__all__'
 
 class UserSerializer(serializers.ModelSerializer):
@@ -54,22 +87,19 @@ class VTaskPSerializer(serializers.ModelSerializer):
         model = VTaskP
         fields = '__all__'
 
-
-class UserPSerializer(serializers.ModelSerializer):
-    # Para LECTURA (GET): Anida el objeto User completo (con nombre, email, etc.)
-    # Esto permite al frontend mostrar información útil.
+class CalendarSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
-    
-    # Para ESCRITURA (POST/PUT): Acepta solo el ID del usuario.
-    # 'source="user"' mapea este campo al campo 'user' del modelo.
     user_id = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), source='user', write_only=True
     )
+    group = UserPSerializer(read_only=True)
+    group_id = serializers.PrimaryKeyRelatedField(
+        queryset=UserP.objects.all(), source='group', write_only=True
+    )
 
     class Meta:
-        model = UserP
-        # Definimos explícitamente los campos para incluir los campos virtuales 'user' y 'user_id'
-        fields = ('id', 'year', 'week', 'day', 'date', 'state', 'turn', 'user', 'user_id')
+        model = Calendar
+        fields = '__all__'
 
 
 class SampleSerializer(serializers.ModelSerializer):
@@ -78,6 +108,28 @@ class SampleSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 class AssaySerializer(serializers.ModelSerializer):
+    # En AssayView el frontend espera que 'sample' sea un objeto a veces (para obtener sample.equipment),
+    # o espera 'sample_id' si es solo ID.
+    # AssaysView.vue linea 108: if (key === 'sample' && typeof assay[key] === 'object' && assay[key] !== null) ...
+    # Esto indica que el frontend espera o maneja un objeto anidado en 'sample'.
+    # Pero para escritura (POST/PUT) necesitamos enviar ID.
+    
+    # Solución híbrida estándar DRF:
+    # Sobreescribir 'to_representation' para GET (devuelve objeto o ID enriquecido)
+    # y dejar 'sample' como PrimaryKeyRelatedField por defecto para POST/PUT.
+
+    # Opcion 2 (Mas simple): Dejar como está (ID) y que frontend cargue Samples aparte
+    # y haga el match, PERO AssaysView.vue ya tiene lógica para filtrar por equipment usando sample__equipment
+    # y renderizar sample.id si es objeto.
+    
+    # Vamos a exponer sample como objeto completo en GET para facilitar al frontend
+    # ver el ID y otros datos, pero permitiendo escritura por ID.
+    
+    sample = SampleSerializer(read_only=True)
+    sample_id = serializers.PrimaryKeyRelatedField(
+        queryset=Sample.objects.all(), source='sample', write_only=True, allow_null=True
+    )
+
     class Meta:
         model = Assay
         fields = '__all__'

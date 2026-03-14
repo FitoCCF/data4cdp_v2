@@ -14,6 +14,12 @@ from rest_framework import filters
 class EstadoViewSet(viewsets.ModelViewSet):
     queryset = Estado.objects.all()
     serializer_class = EstadoSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'estado_nombre': ['exact', 'in', 'icontains']
+    }
+    ordering_fields = ['id', 'estado_nombre']
 
     # Endpoint `/schema/`
     @action(detail=False, methods=['get'], url_path='schema')
@@ -119,6 +125,26 @@ class EquipmentViewSet(viewsets.ModelViewSet):
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+    
+    # Habilitar filtros y ordenamiento
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    
+    # Definir campos de filtrado
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'name': ['exact', 'in', 'icontains'],
+        'duration': ['exact', 'in'],
+        'workers': ['exact', 'in'],
+        'frequency': ['exact', 'in', 'icontains'],
+        'start_date': ['exact', 'in', 'gte', 'lte'],
+        'description': ['exact', 'in', 'icontains'],
+        'procedure': ['exact', 'in', 'icontains'],
+        'turn': ['exact', 'in', 'icontains'],
+        'equipment': ['exact', 'in']
+    }
+    
+    # Definir campos de ordenamiento
+    ordering_fields = ['id', 'name', 'duration', 'workers', 'frequency', 'start_date', 'description', 'procedure', 'turn', 'equipment']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -128,6 +154,26 @@ class TaskViewSet(viewsets.ModelViewSet):
 class TaskPViewSet(viewsets.ModelViewSet):
     queryset = TaskP.objects.all()
     serializer_class = TaskPSerializer
+    
+    # Habilitar filtros y ordenamiento
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    
+    # Definir campos de filtrado
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'task': ['exact', 'in'],
+        'year': ['exact', 'in', 'gte', 'lte'],
+        'week': ['exact', 'in', 'gte', 'lte'],
+        'day': ['exact', 'in', 'icontains'],
+        'date': ['exact', 'in', 'gte', 'lte'],
+        'usuario': ['exact', 'in'],
+        'estado': ['exact', 'in'],
+        'priority': ['exact', 'in', 'icontains'],
+        'rescheduled': ['exact', 'in']
+    }
+    
+    # Definir campos de ordenamiento
+    ordering_fields = ['id', 'task', 'year', 'week', 'day', 'date', 'usuario', 'estado', 'priority', 'rescheduled']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -137,6 +183,14 @@ class TaskPViewSet(viewsets.ModelViewSet):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     serializer_class = UserSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'nombre': ['exact', 'in', 'icontains'],
+        'apellido': ['exact', 'in', 'icontains'],
+        'email': ['exact', 'in', 'icontains']
+    }
+    ordering_fields = ['id', 'nombre', 'apellido', 'email']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -146,6 +200,13 @@ class UserViewSet(viewsets.ModelViewSet):
 class CorrectiveTaskViewSet(viewsets.ModelViewSet):
     queryset = CorrectiveTask.objects.all()
     serializer_class = CorrectiveTaskSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'description': ['exact', 'in', 'icontains'],
+        'equipment': ['exact', 'in']
+    }
+    ordering_fields = ['id', 'equipment']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -193,10 +254,10 @@ class AssayViewSet(viewsets.ModelViewSet):
         'time': ['exact', 'in'],
         'sample': ['exact', 'in'],
         'sample__equipment': ['exact', 'in'],
-        'userp': ['exact', 'in']
+        'user': ['exact', 'in']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
-    ordering_fields = ['id', 'date', 'time', 'sample', 'userp']
+    ordering_fields = ['id', 'date', 'time', 'sample', 'user']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -207,8 +268,14 @@ class AssayViewSet(viewsets.ModelViewSet):
 class VTaskPViewSet(viewsets.ReadOnlyModelViewSet):  # Solo lectura
     queryset = VTaskP.objects.all()
     serializer_class = VTaskPSerializer
-    filter_backends = [DjangoFilterBackend]
-    filterset_fields = ['semana']
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id_taskp': ['exact', 'in'],
+        'semana': ['exact', 'in', 'gte', 'lte'],
+        'fecha': ['exact', 'in', 'gte', 'lte'],
+        'estado': ['exact', 'in', 'icontains'],
+    }
+    ordering_fields = ['id_taskp', 'semana', 'fecha', 'estado']
 
     @action(detail=False, methods=['put'], url_path='update-estado')
     def update_estado(self, request):
@@ -246,3 +313,9 @@ class VTaskPViewSet(viewsets.ReadOnlyModelViewSet):  # Solo lectura
 class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
     queryset = UserP.objects.all()
     serializer_class = UserPSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'name': ['exact', 'in', 'icontains'],
+    }
+    ordering_fields = ['id', 'name']

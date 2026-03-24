@@ -1,60 +1,66 @@
-from django.db import models
-from django.contrib.auth.models import User as AuthUser
+from django.db import models # Importa el módulo de base de datos de Django para definir modelos
+from django.contrib.auth.models import User as AuthUser # Importa el modelo de usuario estándar de Django y lo renombra como AuthUser
 
+# Modelo que define el estado en el que se puede encontrar una tarea (Pendiente, Realizada, etc.)
 class Estado(models.Model):
-    estado_nombre = models.CharField(max_length=50)
+    estado_nombre = models.CharField(max_length=50) # Campo de texto para el nombre del estado (máximo 50 caracteres)
 
     class Meta:
-        ordering = ['-id']
+        ordering = ['-id'] # Ordena los estados de manera descendente según su ID por defecto
     
     def __str__(self):
-        return self.estado_nombre
+        return self.estado_nombre # Al imprimir el objeto, mostrará el nombre del estado
 
+# Modelo que representa una Planta de la operación
 class Plant(models.Model):
-    tag = models.CharField(max_length=10)
-    name = models.CharField(max_length=100)
-    description = models.TextField(null=True, blank=True)
+    tag = models.CharField(max_length=10) # Código corto o identificador de la planta
+    name = models.CharField(max_length=100) # Nombre completo de la planta
+    description = models.TextField(null=True, blank=True) # Descripción larga, opcional (puede dejarse vacío)
 
     class Meta:
-        ordering = ['-id']
+        ordering = ['-id'] # Orden descendente por ID
 
+# Modelo que representa un Área específica dentro de una Planta
 class Area(models.Model):
-    name = models.CharField(max_length=100)
-    tag = models.CharField(max_length=10, null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    plant = models.ForeignKey(Plant, on_delete=models.CASCADE)
+    name = models.CharField(max_length=100) # Nombre del área
+    tag = models.CharField(max_length=10, null=True, blank=True) # Etiqueta opcional para el área
+    description = models.TextField(null=True, blank=True) # Descripción detallada opcional
+    plant = models.ForeignKey(Plant, on_delete=models.CASCADE) # Clave foránea hacia Plant; si se borra la planta, se borra el área
 
     class Meta:
         ordering = ['-id']
 
+# Modelo para agrupar equipos bajo un mismo Sistema operativo
 class System(models.Model):
-    tag = models.CharField(max_length=50, null=True, blank=True)
-    name = models.CharField(max_length=100)
-    description = models.TextField(null=True, blank=True)
+    tag = models.CharField(max_length=50, null=True, blank=True) # Etiqueta o código del sistema, opcional
+    name = models.CharField(max_length=100) # Nombre del sistema
+    description = models.TextField(null=True, blank=True) # Descripción del sistema, opcional
 
     class Meta:
         ordering = ['-id']
 
+# Modelo que representa un Equipo físico específico
 class Equipment(models.Model):
-    tag = models.CharField(max_length=50, null=True, blank=True)
-    name = models.CharField(max_length=100)
-    description = models.TextField(null=True, blank=True)
-    system = models.ForeignKey(System, on_delete=models.CASCADE)
-    area = models.ForeignKey(Area, on_delete=models.CASCADE, null=True, blank=True)  # Nuevo campo agregado
+    tag = models.CharField(max_length=50, null=True, blank=True) # Etiqueta o número de serie del equipo
+    name = models.CharField(max_length=100) # Nombre descriptivo del equipo
+    description = models.TextField(null=True, blank=True) # Funcionalidad o detalle del equipo
+    system = models.ForeignKey(System, on_delete=models.CASCADE) # Relación con el Sistema al que pertenece (borrado en cascada)
+    area = models.ForeignKey(Area, on_delete=models.CASCADE, null=True, blank=True)  # Relación con el Área en la que se ubica
 
     class Meta:
         ordering = ['-id']
 
+# Modelo maestro para definir las pautas o plantillas de Tareas de mantenimiento
 class Task(models.Model):
-    name = models.CharField(max_length=100)
-    duration = models.IntegerField(null=True, blank=True)
-    workers = models.IntegerField(null=True, blank=True)
-    frequency = models.CharField(max_length=50, null=True, blank=True)
-    start_date = models.DateField(null=True, blank=True)
-    description = models.TextField(null=True, blank=True)
-    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, null=True, blank=True)
-    procedure = models.TextField(null=True, blank=True)
-    turn = models.CharField(max_length=10, null=True, blank=True)
+    name = models.CharField(max_length=100) # Nombre de la tarea a realizar
+    duration = models.IntegerField(null=True, blank=True) # Tiempo estimado en horas/minutos, opcional
+    workers = models.IntegerField(null=True, blank=True) # Cantidad de trabajadores requeridos, opcional
+    frequency = models.CharField(max_length=50, null=True, blank=True) # Frecuencia con la que se repite (ej: "Mensual")
+    start_date = models.DateField(null=True, blank=True) # Fecha planificada para el primer inicio
+    description = models.TextField(null=True, blank=True) # Descripción profunda de qué se debe hacer
+    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, null=True, blank=True) # Equipo al que se le aplicará la tarea
+    procedure = models.TextField(null=True, blank=True) # Pasos detallados a seguir
+    turn = models.CharField(max_length=10, null=True, blank=True) # Turno sugerido u obligatorio
 
     class Meta:
         ordering = ['-id']
@@ -62,129 +68,118 @@ class Task(models.Model):
     def __str__(self):
         return self.name
 
+# Modelo para definir roles o Grupos Personalizados para los usuarios
 class UserP(models.Model):
-    name = models.CharField(max_length=20)
+    name = models.CharField(max_length=20) # Nombre del grupo (Ej. "Supervisor", "Operador")
     
     def __str__(self):
         return self.name
 
+# Modelo que extiende la información de usuario en el sistema
 class User(models.Model):
-    auth_user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, null=True, blank=True)
-    nombre = models.CharField(max_length=50)
-    apellido = models.CharField(max_length=50)
-    email = models.EmailField(unique=True)
-    rol = models.CharField(max_length=50, null=True, blank=True)
-    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
+    auth_user = models.OneToOneField(AuthUser, on_delete=models.CASCADE, null=True, blank=True) # Vinculación 1 a 1 con el login de Django
+    nombre = models.CharField(max_length=50) # Nombre de pila
+    apellido = models.CharField(max_length=50) # Apellidos
+    email = models.EmailField(unique=True) # Correo, que será único en el sistema
+    rol = models.CharField(max_length=50, null=True, blank=True) # Rol textual
+    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True) # Asignación al grupo personalizado
 
     class Meta:
         ordering = ['-id']
     
     def __str__(self):
-        return f"{self.nombre} {self.apellido}"
+        return f"{self.nombre} {self.apellido}" # Se visualizará "Nombre Apellido"
 
-
-
+# Modelo que gestiona los turnos o excepciones calendarias de trabajadores y grupos
 class Calendar(models.Model):
-    #user = models.ForeignKey(User, on_delete=models.CASCADE)  # Si User se elimina, también se borra User
-    #user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    year = models.IntegerField()  # Año
-    week = models.IntegerField()
-    day = models.CharField(max_length=20)  # Día de la semana (Ejemplo: "Lunes")
-    date = models.DateField()  # Fecha en formato YYYY-MM-DD
-    #state = models.CharField(null=True, max_length=10)  # Estado (Ejemplo: "Activo", "Inactivo")
-    turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
-    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True)
+    year = models.IntegerField()  # Año del turno
+    week = models.IntegerField()  # Semana del año asociada
+    day = models.CharField(max_length=20)  # Día textual ("Lunes", "Martes")
+    date = models.DateField()  # Fecha exacta
+    turn = models.CharField(max_length=10, null=True, blank=True)  # Turno programado ("A", "B", "C")
+    group = models.ForeignKey(UserP, on_delete=models.CASCADE, null=True, blank=True) # Afecta a este grupo completo si existe
 
-    overtime = models.IntegerField(default=0)
+    overtime = models.IntegerField(default=0) # Horas extra planificadas (default 0)
 
-    user = models.ForeignKey(
+    user = models.ForeignKey( # Excepción específica para un solo usuario en lugar de grupo
         User,
-        on_delete=models.SET_NULL,
+        on_delete=models.SET_NULL, # Si borran al usuario, esto queda en NULL (no se borra el registro de calendario)
         null=True,
         blank=True,
-        related_name="Exception_calendar",
-        db_column="id_user"
+        related_name="Exception_calendar", # Nombre de acceso inverso (user.Exception_calendar.all())
+        db_column="id_user" # Se nombra la columna real de la BD 'id_user'
     )
 
     class Meta:
-        ordering = ['-date', 'group']
+        ordering = ['-date', 'group'] # Ordenados por fecha y grupo
 
     def __str__(self):
         tipo = f"Grupo: {self.group}" if self.group else f"Usuario: {self.user}"
         return f"{self.date} - {tipo} ({self.turn})"
-    #def __str__(self):
-    #    return f"{self.user.nombre} - {self.date} - {self.turn}"
 
-
-
+# Modelo que representa la Ejecución Programada de una Tarea (Tarea a realizar en una fecha concreta)
 class TaskP(models.Model):
-    # Relación con la plantilla maestra de la tarea de mantenimiento
-    task = models.ForeignKey(Task, on_delete=models.CASCADE)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE) # Plantilla base de la tarea de la que hereda
     
     # --- DATOS DE PROGRAMACIÓN ORIGINAL ---
     year = models.IntegerField()              # Año en el que se programó ejecutar
-    week = models.IntegerField()              # Semana extendida (histórica) de ejecución
-    day = models.CharField(max_length=20)     # Nombre del día de la semana (Ej. 'Lunes')
-    date = models.DateField()                 # Fecha exacta planificada originalmente (Ej: 2026-03-11)
+    week = models.IntegerField()              # Semana en que toca ejecutar
+    day = models.CharField(max_length=20)     # Nombre del día
+    date = models.DateField()                 # Fecha exacta planificada originally
     
-    # --- DATOS DE EJECUCIÓN REAL (NUEVOS) ---
-    estado = models.ForeignKey(Estado, on_delete=models.CASCADE, default=1) # 1=Pendiente, 2=Realizada, 3=Cancelada
-    completion_date = models.DateTimeField(null=True, blank=True)           # Timestamp real en el que el operario marcó la tarea como terminada
-    comments = models.TextField(null=True, blank=True)                      # Observaciones recolectadas en terreno al cerrar la tarea
+    # --- DATOS DE EJECUCIÓN REAL ---
+    estado = models.ForeignKey(Estado, on_delete=models.CASCADE, default=1) # Vincula al modelo de estados; Default = 1 (Pendiente)
+    completion_date = models.DateTimeField(null=True, blank=True)           # Cuándo se completó en realidad
+    comments = models.TextField(null=True, blank=True)                      # Notas puestas por el operador al terminar
     
     # --- CONTROL DE EXCEPCIONES Y REPROGRAMACIÓN ---
-    rescheduled = models.BooleanField(default=False)                        # Bandera. True = esta tarea no se hizo cuando tocaba y fue movida
-    reschedule_date = models.DateField(null=True, blank=True)               # La nueva fecha hacia la que fue desplazada esta tarea
-    reschedule_reason = models.TextField(null=True, blank=True)             # Justificación del supervisor para mover la tarea
-    reschedule_user_id = models.IntegerField(null=True, blank=True)         # ID del usuario/supervisor que autorizó el movimiento
+    rescheduled = models.BooleanField(default=False)                        # Booleano que marca si esta tarea fue atrasada
+    reschedule_date = models.DateField(null=True, blank=True)               # Para cuándo se movió la tarea
+    reschedule_reason = models.TextField(null=True, blank=True)             # Por qué se movió (ej. falta de repuestos)
+    reschedule_user_id = models.IntegerField(null=True, blank=True)         # ID de quien dio la orden de moverla
     
-    # Usuario asignado (opcional, si es diferente al calendario por defecto o para override)
-    usuario = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True)
+    group = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True) # Operador/Grupo designado específicamente para esto
 
-    # Bandera estructural: 
-    #   False = Solo se movió este evento en particular.
-    #   True  = Se movió este evento Y la fecha semilla (start_date) en la tabla 'Task' madre se actualizó.
-    is_permanent_reschedule = models.BooleanField(default=False)
+    is_permanent_reschedule = models.BooleanField(default=False) # Si el cambio de fecha afecta a todas las futuras de la plantilla
 
-    # --- METADATOS ---
-    priority = models.IntegerField(null=True, blank=True, default=1)        # Nivel de urgencia de la tarea (ej. 1=Normal, 2=Alta)
+    priority = models.IntegerField(null=True, blank=True, default=1)        # Prioridad de ejecución
 
     class Meta:
         ordering = ['-id']
 
+# Asigna la tarea a un evento específico del calendario
 class TaskGroupAssignment(models.Model):
-    taskp = models.ForeignKey(TaskP, on_delete=models.CASCADE)
-    calendar = models.ForeignKey(Calendar, on_delete=models.CASCADE)
+    taskp = models.ForeignKey(TaskP, on_delete=models.CASCADE) # La tarea planificada
+    calendar = models.ForeignKey(Calendar, on_delete=models.CASCADE) # El registro de calendario que indica quién/cuándo
 
     class Meta:
         ordering = ['-id']
 
+# Modelo para tareas correctivas imprevistas (fallas, roturas en el momento)
 class CorrectiveTask(models.Model):
-    year = models.IntegerField(null=True, blank=True)
-    week = models.IntegerField(null=True, blank=True)
-    day = models.CharField(max_length=20, null=True, blank=True)
-    date = models.DateField(null=True, blank=True)
-    #group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True)
-    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE)
-    description = models.TextField()
-    creation_date = models.DateField()
-    estado = models.ForeignKey(Estado, on_delete=models.CASCADE)
-    priority = models.IntegerField()
-    created_by_user = models.ForeignKey(User, on_delete=models.CASCADE)
-    completion_date = models.DateField(null=True, blank=True)
-    root_cause = models.TextField(null=True, blank=True)
-    comments = models.TextField(null=True, blank=True)
-    #turn = models.CharField(max_length=10, null=True, blank=True)  # Turno (Ejemplo: "A", "B", "C")
+    year = models.IntegerField(null=True, blank=True) # Año de ocurrencia
+    week = models.IntegerField(null=True, blank=True) # Semana de ocurrencia
+    day = models.CharField(max_length=20, null=True, blank=True) # Día de ocurrencia
+    date = models.DateField(null=True, blank=True) # Fecha exacta
+    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE) # Equipo que se rompió/falló
+    description = models.TextField() # Descripción del incidente
+    creation_date = models.DateField() # Fecha de reporte
+    estado = models.ForeignKey(Estado, on_delete=models.CASCADE) # Estado (ej: En Reparación)
+    priority = models.IntegerField() # Nivel de criticidad
+    created_by_user = models.ForeignKey(User, on_delete=models.CASCADE) # Quien lo reportó
+    completion_date = models.DateField(null=True, blank=True) # Cuándo se solucionó
+    root_cause = models.TextField(null=True, blank=True) # Causa raíz diagnosticada
+    comments = models.TextField(null=True, blank=True) # Notas sobre cómo se reparó
 
     class Meta:
         ordering = ['-id']
 
-
+# Modelo para identificar muestras físicas extraídas
 class Sample(models.Model):
-    tag = models.CharField(max_length=50)
-    name = models.CharField(max_length=50)
-    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, related_name="samples")
-    sn = models.CharField(max_length=4, null=True, blank=True)
+    tag = models.CharField(max_length=50) # Etiqueta de frasco/muestra
+    name = models.CharField(max_length=50) # Nombre de la muestra (ej. Pulpa)
+    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, related_name="samples") # De qué equipo salió (permite eq.samples.all())
+    sn = models.CharField(max_length=4, null=True, blank=True) # Serial number, opcional
 
     class Meta:
         ordering = ['-id']
@@ -192,29 +187,38 @@ class Sample(models.Model):
     def __str__(self):
         return f"{self.tag} - {self.name}"
 
+# Modelo que registra los valores analizados para las muestras en laboratorios (Análisis Químico y Físico)
 class Assay(models.Model):
-    date = models.DateField(null=True, blank=True)
-    time = models.TimeField(null=True, blank=True)
-    instance = models.IntegerField(null=True, blank=True)
-    n1fe = models.IntegerField(null=True, blank=True)
+    date = models.DateField(null=True, blank=True) # Fecha de ensayo
+    time = models.TimeField(null=True, blank=True) # Hora de ensayo
+    instance = models.IntegerField(null=True, blank=True) # Contador de iteración del ensayo
+    
+    # Lecturas enteras de elementos/componentes (Hierro, Cobre, Zinc, Molibdeno...)
+    n1fe = models.IntegerField(null=True, blank=True) 
     n2cu = models.IntegerField(null=True, blank=True)
     n3zn = models.IntegerField(null=True, blank=True)
     n4mo = models.IntegerField(null=True, blank=True)
     n5ech5 = models.IntegerField(null=True, blank=True)
     n6sc = models.IntegerField(null=True, blank=True)
     n7ech7 = models.IntegerField(null=True, blank=True)
+    
+    # Porcentajes calculados de elementos químicos
     pFe = models.FloatField(null=True, blank=True)
     pCu = models.FloatField(null=True, blank=True)
     pZn = models.FloatField(null=True, blank=True)
     pMo = models.FloatField(null=True, blank=True)
-    pIns = models.FloatField(null=True, blank=True)
-    pSol = models.FloatField(null=True, blank=True)
-    tara = models.FloatField(null=True, blank=True)
-    tweight = models.FloatField(null=True, blank=True)
-    dweight = models.FloatField(null=True, blank=True)
-    pweight = models.FloatField(null=True, blank=True)
-    chemical_id = models.IntegerField(null=True, blank=True)
-    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True)
+    pIns = models.FloatField(null=True, blank=True) # Insoluble
+    pSol = models.FloatField(null=True, blank=True) # Soluble
+    
+    # Pesos en balanza
+    tara = models.FloatField(null=True, blank=True) # Peso recipiente (tara)
+    tweight = models.FloatField(null=True, blank=True) # Peso bruto
+    dweight = models.FloatField(null=True, blank=True) # Peso seco
+    pweight = models.FloatField(null=True, blank=True) # Peso producto final
+    chemical_id = models.IntegerField(null=True, blank=True) # ID o código del químico
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True) # La muestra física
+    
+    # Más campos flotantes de análisis
     a1fe = models.FloatField(null=True, blank=True)
     a2cu = models.FloatField(null=True, blank=True)
     a3zn = models.FloatField(null=True, blank=True)
@@ -222,42 +226,25 @@ class Assay(models.Model):
     a5a5 = models.FloatField(null=True, blank=True)
     a6sol = models.FloatField(null=True, blank=True)
     a7a7 = models.FloatField(null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    meta_user = models.CharField(max_length=50, null=True, blank=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True) # Usuario que capturó los datos
+    meta_user = models.CharField(max_length=50, null=True, blank=True) # Metadatos de usuario en texto plano
 
     class Meta:
         ordering = ['-id']
 
-
-
-class VTaskP(models.Model):
-    planta = models.CharField(max_length=255)
-    sistema = models.CharField(max_length=255)
-    equipo = models.CharField(max_length=255)
-    descripcion = models.TextField()
-    tarea_descripcion = models.TextField()
-    tag = models.CharField(max_length=100)
-    id_task = models.IntegerField()
-    semana = models.IntegerField()
-    fecha = models.DateField()
-    dia_semana = models.CharField(max_length=20)
-    estado = models.CharField(max_length=50)
-    turno = models.CharField(max_length=10)
-    id_taskp = models.IntegerField(primary_key=True)  # ID de la tabla original TaskP
-
-    class Meta:
-        managed = False  # No permite que Django administre la vista
-        db_table = "vtaskp"  # Nombre exacto de la vista en PostgreSQL
-        ordering = ['-id_taskp']
-
+# Modelo para ensayos de granulometría (Tamaño de partícula - Particle Size Indicator)
 class AssaysPsi(models.Model):
-    date = models.DateField(null=True, blank=True)
-    time = models.TimeField(null=True, blank=True)
-    instance = models.IntegerField(null=True, blank=True)
-    tara = models.FloatField(null=True, blank=True)
-    tweight = models.FloatField(null=True, blank=True)
-    dweight = models.FloatField(null=True, blank=True)
-    psolid = models.FloatField(null=True, blank=True)
+    date = models.DateField(null=True, blank=True) # Fecha del granulométrico
+    time = models.TimeField(null=True, blank=True) # Hora
+    instance = models.IntegerField(null=True, blank=True) # Iteración
+    
+    # Pesos base
+    tara = models.FloatField(null=True, blank=True) # Peso tara
+    tweight = models.FloatField(null=True, blank=True) # Peso total
+    dweight = models.FloatField(null=True, blank=True) # Peso en seco
+    psolid = models.FloatField(null=True, blank=True) # Porcentaje de sólidos
+    
+    # Porcentajes de material retenido en distintas mallas de criba (Malla 48, 65, 100...)
     pW48 = models.FloatField(null=True, blank=True)
     pW65 = models.FloatField(null=True, blank=True)
     pW100 = models.FloatField(null=True, blank=True)
@@ -265,10 +252,14 @@ class AssaysPsi(models.Model):
     pW200 = models.FloatField(null=True, blank=True)
     pW325 = models.FloatField(null=True, blank=True)
     pW400 = models.FloatField(null=True, blank=True)
-    aAvg = models.FloatField(null=True, blank=True)
-    aSD = models.FloatField(null=True, blank=True)
-    aDensity = models.FloatField(null=True, blank=True)
-    aSol = models.FloatField(null=True, blank=True)
+    
+    # Estadísticas derivadas
+    aAvg = models.FloatField(null=True, blank=True) # Promedio
+    aSD = models.FloatField(null=True, blank=True) # Desviación estándar
+    aDensity = models.FloatField(null=True, blank=True) # Densidad
+    aSol = models.FloatField(null=True, blank=True) # Sólidos
+    
+    # Valores de pase (pasantes) por mallas
     aP48 = models.FloatField(null=True, blank=True)
     aP65 = models.FloatField(null=True, blank=True)
     aP100 = models.FloatField(null=True, blank=True)
@@ -276,8 +267,11 @@ class AssaysPsi(models.Model):
     aP200 = models.FloatField(null=True, blank=True)
     aP325 = models.FloatField(null=True, blank=True)
     aP400 = models.FloatField(null=True, blank=True)
-    P80 = models.FloatField(null=True, blank=True)
-    P50 = models.FloatField(null=True, blank=True)
+    
+    P80 = models.FloatField(null=True, blank=True) # Tamaño al que pasa el 80% del material
+    P50 = models.FloatField(null=True, blank=True) # Tamaño al que pasa el 50% del material (mediana)
+    
+    # Cálculos adicionales para tamaño por malla
     pP48 = models.FloatField(null=True, blank=True)
     pP65 = models.FloatField(null=True, blank=True)
     pP100 = models.FloatField(null=True, blank=True)
@@ -285,6 +279,8 @@ class AssaysPsi(models.Model):
     pP200 = models.FloatField(null=True, blank=True)
     pP325 = models.FloatField(null=True, blank=True)
     pP400 = models.FloatField(null=True, blank=True)
+    
+    # Distribución en micras (μm) - Análisis fraccional
     an_50_um = models.FloatField(null=True, blank=True)
     a50_100_um = models.FloatField(null=True, blank=True)
     a100_150_um = models.FloatField(null=True, blank=True)
@@ -306,10 +302,11 @@ class AssaysPsi(models.Model):
     a900_950_um = models.FloatField(null=True, blank=True)
     a950_1000_um = models.FloatField(null=True, blank=True)
     a1000_n_um = models.FloatField(null=True, blank=True)
-    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
-    meta_user = models.CharField(max_length=50, null=True, blank=True)
-    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True)
-    turn = models.CharField(max_length=10, null=True, blank=True)
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True) # Analista
+    meta_user = models.CharField(max_length=50, null=True, blank=True) # Metadatos en texto
+    sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True) # Muestra evaluada
+    turn = models.CharField(max_length=10, null=True, blank=True) # Turno en que se hizo el análisis
 
     class Meta:
         ordering = ['-id']

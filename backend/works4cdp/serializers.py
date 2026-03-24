@@ -82,10 +82,7 @@ class CorrectiveTaskSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
-class VTaskPSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = VTaskP
-        fields = '__all__'
+
 
 class CalendarSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)

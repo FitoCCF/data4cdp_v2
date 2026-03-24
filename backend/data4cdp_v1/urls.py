@@ -32,7 +32,6 @@ router.register(r'users', UserViewSet)
 router.register(r'correctivetasks', CorrectiveTaskViewSet)
 router.register(r'samples', SampleViewSet)
 router.register(r'assays', AssayViewSet)
-router.register(r'vtaskp', VTaskPViewSet, basename='vtaskp')
 router.register(r'userp', UserPViewSet, basename='userp')
 
 urlpatterns = [

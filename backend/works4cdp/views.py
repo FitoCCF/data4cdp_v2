@@ -6,7 +6,7 @@ from rest_framework.response import Response
 from .models import *
 from .serializers import *
 from rest_framework.views import APIView
-from .serializers import VTaskPSerializer
+
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 
@@ -265,49 +265,6 @@ class AssayViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 
-class VTaskPViewSet(viewsets.ReadOnlyModelViewSet):  # Solo lectura
-    queryset = VTaskP.objects.all()
-    serializer_class = VTaskPSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = {
-        'id_taskp': ['exact', 'in'],
-        'semana': ['exact', 'in', 'gte', 'lte'],
-        'fecha': ['exact', 'in', 'gte', 'lte'],
-        'estado': ['exact', 'in', 'icontains'],
-    }
-    ordering_fields = ['id_taskp', 'semana', 'fecha', 'estado']
-
-    @action(detail=False, methods=['put'], url_path='update-estado')
-    def update_estado(self, request):
-        """
-        Endpoint para actualizar el estado de las tareas filtradas por semana.
-        """
-        try:
-            # Obtener los datos del request
-            id_taskp = request.data.get("id_taskp")  # Identificador de la tarea
-            nuevo_estado_nombre = request.data.get("estado")  # Nuevo estado
-            semana = request.data.get("semana")  # Semana para filtrar
-
-            if not id_taskp or not nuevo_estado_nombre or not semana:
-                return Response({"error": "Faltan parámetros: id_taskp, estado o semana"}, status=status.HTTP_400_BAD_REQUEST)
-
-            # Verificar que la tarea esté en la semana filtrada
-            tarea = get_object_or_404(VTaskP, id_taskp=id_taskp, semana=semana)
-
-            # Obtener la tarea real en TaskP para actualizar su estado
-            taskp = get_object_or_404(TaskP, id=id_taskp)
-
-            # Buscar el objeto Estado en la base de datos
-            nuevo_estado = get_object_or_404(Estado, estado_nombre=nuevo_estado_nombre)
-
-            # Actualizar el estado en la tabla TaskP
-            taskp.estado = nuevo_estado
-            taskp.save()
-
-            return Response({"message": f"Estado actualizado exitosamente para la tarea {id_taskp}"}, status=status.HTTP_200_OK)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo

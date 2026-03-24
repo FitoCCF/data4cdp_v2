@@ -63,7 +63,6 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'; // Importar funciones reactivas y eventos de Vue
 import { api } from '../../api'; // Importar la API definida
-import axios from 'axios'; // Cliente HTTP para llamadas a la API
 import { getWeek } from 'date-fns'; // Función para calcular la semana del año
 import * as XLSX from 'xlsx'; // Librería para exportar datos a Excel
 
@@ -77,9 +76,7 @@ const tareasAgrupadas = ref([]); // Lista de tareas organizadas
 // Función para calcular la semana basada en la fecha actual
 const actualWeek = (fecha) => {
   const semana = getWeek(fecha, { weekStartsOn: 1 });
-  alert("semana calculada "+semana);
   const anio = fecha.getFullYear();
-  alert(anio);
    //xweek = initial_week + 6 + ((year - 1963) * 52)
   return semana + 6 + ((anio - 1963) * 52); // Ajuste según la lógica específica del usuario
 };
@@ -139,13 +136,10 @@ const updateEstado = async (id, nuevoEstado, week) => {
   if (!id || !nuevoEstado || !week) return;
 
   try {
-    const url = `http://localhost:8000/api/vtaskp/update-estado/`;
-    await axios.put(url, { 
+    await api.put('vtaskp/update-estado/', {
       id_taskp: id,
       estado: nuevoEstado,
       semana: week
-    }, {
-      headers: { "Content-Type": "application/json" }
     });
 
     console.log(`Estado actualizado correctamente para la tarea con ID ${id}`);
@@ -202,10 +196,7 @@ watch(nsemana, (newVal) => {
 // Cargar datos cuando el componente se monta
 onMounted(() => {
   const semanaInicial = actualWeek(new Date());
-  alert("semana inicial"+semanaInicial);
   cargarDatos(semanaInicial);
-
-  alert("RSEMANA"+rsemana);
 });
 
 // Función para asignar clases CSS según el valor de turno o estado

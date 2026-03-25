@@ -159,17 +159,29 @@ class TaskPViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     
     # Definir campos de filtrado
+    #filterset_fields = {
+    #    'id': ['exact', 'in'],
+    #    'task': ['exact', 'in'],
+    #    'year': ['exact', 'in', 'gte', 'lte'],
+    #    'week': ['exact', 'in', 'gte', 'lte'],
+    #    'day': ['exact', 'in', 'icontains'],
+    #    'date': ['exact', 'in', 'gte', 'lte'],
+    #    'usuario': ['exact', 'in'],
+    #    'estado': ['exact', 'in'],
+    #    'priority': ['exact', 'in', 'icontains'],
+    #    'rescheduled': ['exact', 'in']
+    #}
+
+    # IMPORTANTE: Cambia 'exact' por una lista que incluya 'in' para los campos clave
     filterset_fields = {
         'id': ['exact', 'in'],
         'task': ['exact', 'in'],
         'year': ['exact', 'in', 'gte', 'lte'],
         'week': ['exact', 'in', 'gte', 'lte'],
-        'day': ['exact', 'in', 'icontains'],
         'date': ['exact', 'in', 'gte', 'lte'],
-        'usuario': ['exact', 'in'],
         'estado': ['exact', 'in'],
-        'priority': ['exact', 'in', 'icontains'],
-        'rescheduled': ['exact', 'in']
+        'group': ['exact', 'in'], # Cambiado de 'usuario' a 'group' según tu models.py
+        'rescheduled': ['exact']
     }
     
     # Definir campos de ordenamiento
@@ -276,3 +288,29 @@ class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
         'name': ['exact', 'in', 'icontains'],
     }
     ordering_fields = ['id', 'name']
+
+
+class WeeklyTaskView(APIView):
+    def get(self, request):
+        week = request.query_params.get('week')
+        year = request.query_params.get('year', 2026)
+
+        if not week or not year:
+             return Response({"error": "Faltan parámetros week y year"}, status=400)
+
+        # Obtenemos todas las tareas de la semana con JOINs optimizados
+        tareas = TaskP.objects.filter(week=week, year=year).select_related(
+            'task__equipment__area__plant',
+            'task__equipment__system',
+            'estado'
+        ).order_by('date') # Asegúrate de tener un orden o usa .order_by('date')
+
+        serializer = WeeklyTaskSerializer(tareas, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        # Endpoint para guardar cambios masivos desde ExcelGrid
+        updates = request.data.get('updates', [])
+        for item in updates:
+            TaskP.objects.filter(id=item['id']).update(estado_id=item['estado'])
+        return Response({"status": "success"})

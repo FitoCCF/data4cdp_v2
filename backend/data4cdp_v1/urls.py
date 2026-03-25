@@ -36,6 +36,7 @@ router.register(r'userp', UserPViewSet, basename='userp')
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    path('api/weekly-tasks/', WeeklyTaskView.as_view(), name='weekly-tasks'),
     path('api/', include(router.urls)),  # Incluir las rutas de la API
     #path('api/vtaskp/', VTaskPListView.as_view(), name='vtaskp-list'),  # Nueva ruta para la vista personalizada
 ]

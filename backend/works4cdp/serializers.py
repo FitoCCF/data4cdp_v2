@@ -138,3 +138,25 @@ class AssaySerializer(serializers.ModelSerializer):
             if isinstance(value, float) and math.isnan(value):
                 data[key] = None
         return data
+
+class WeeklyTaskSerializer(serializers.ModelSerializer):
+    planta = serializers.CharField(source='task.equipment.area.plant.name', read_only=True)
+    sistema = serializers.CharField(source='task.equipment.system.name', read_only=True)
+    equipo = serializers.CharField(source='task.equipment.name', read_only=True)
+    tarea_nombre = serializers.CharField(source='task.name', read_only=True)
+    # Buscamos el personal asignado en la fecha de la tarea
+    personal = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TaskP
+        fields = ['id', 'planta', 'sistema', 'equipo', 'tarea_nombre', 'date', 'day', 'estado', 'personal']
+
+    def get_personal(self, obj):
+        # Cruce con la tabla Calendar por fecha
+        asignacion = Calendar.objects.filter(date=obj.date).first()
+        if asignacion:
+            if asignacion.user:
+                return f"{asignacion.user.nombre}"
+            if asignacion.group:
+                return asignacion.group.name
+        return "S/A"

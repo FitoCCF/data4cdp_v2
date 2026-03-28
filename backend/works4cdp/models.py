@@ -140,7 +140,7 @@ class TaskP(models.Model):
     
     group = models.ForeignKey(UserP, on_delete=models.SET_NULL, null=True, blank=True) # Operador/Grupo designado específicamente para esto
 
-    is_permanent_reschedule = models.BooleanField(default=False) # Si el cambio de fecha afecta a todas las futuras de la plantilla
+    is_permanent_reschedule = models.BooleanField(default=False, null=True, blank=True) # Si el cambio de fecha afecta a todas las futuras de la plantilla
 
     priority = models.IntegerField(null=True, blank=True, default=1)        # Prioridad de ejecución
 

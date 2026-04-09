@@ -17,7 +17,11 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from works4cdp.views import *
+from works4cdp.views import (
+    EstadoViewSet, PlantViewSet, AreaViewSet, SystemViewSet, EquipmentViewSet,
+    TaskViewSet, TaskPViewSet, UserViewSet, CorrectiveTaskViewSet,
+    SampleViewSet, AssayViewSet, UserPViewSet, WeeklyTaskView, CalendarViewSet
+)
 
 # Crear un router para las rutas de la API
 router = DefaultRouter()
@@ -33,6 +37,8 @@ router.register(r'correctivetasks', CorrectiveTaskViewSet)
 router.register(r'samples', SampleViewSet)
 router.register(r'assays', AssayViewSet)
 router.register(r'userp', UserPViewSet, basename='userp')
+router.register(r'calendars', CalendarViewSet)
+
 
 urlpatterns = [
     path('admin/', admin.site.urls),

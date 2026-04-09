@@ -14,6 +14,7 @@
         <li><router-link to="/weeklytasks">Tareas Semanal</router-link></li>
         <li><router-link to="/sampling">Muestreo</router-link></li>
         <li><router-link to="/excel-test">Prueba Excel</router-link></li>
+        <li><router-link to="/calendario-grupos">Rotación de Grupos</router-link></li>
 
     </ul>
 </div>

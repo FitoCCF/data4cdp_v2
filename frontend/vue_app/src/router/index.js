@@ -64,6 +64,13 @@ const router = createRouter({
             path: '/excel-test',
             name: 'ExcelTest',
             component: () => import('../views/ExcelTestView.vue')
+        },
+        // Dentro de tu array 'routes':
+        {
+            path: '/calendario-grupos',
+            name: 'GroupSchedule',
+            component: () => import('../views/genericViews/GroupScheduleView.vue')
+
         }
 
     ]

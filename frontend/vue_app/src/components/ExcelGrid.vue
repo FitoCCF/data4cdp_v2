@@ -55,6 +55,18 @@
     >
       <table class="excel-table" ref="tableRef">
         <thead>
+          <!-- FILA DE GRUPOS DE CABECERAS (COLSPAN) -->
+          <tr v-if="headerGroups && headerGroups.length > 0">
+            <th v-if="isEditMode" class="row-header"></th>
+            <th
+              v-for="(group, idx) in headerGroups"
+              :key="'hg-' + idx"
+              :colspan="group.colspan"
+              class="col-header group-header-cell"
+            >
+              {{ group.label }}
+            </th>
+          </tr>
           <tr>
             <!-- Encabezado de la columna de índices (SOLO VISIBLE EN MODO EDICIÓN) -->
             <th v-if="isEditMode" class="row-header">#</th>
@@ -121,7 +133,8 @@
               :class="{
                 'active': activeCell.r === visualIndex && activeCell.c === cIndex,
                 'selected': isSelected(visualIndex, cIndex),
-                'read-only': !isEditMode
+                'read-only': !isEditMode || item.row.isSummary,
+                'summary-cell': item.row.isSummary
               }"
               @mousedown="startSelection(visualIndex, cIndex)"
               @mouseover="updateSelection(visualIndex, cIndex)"
@@ -130,11 +143,11 @@
               @keydown="handleKeydown($event, visualIndex, cIndex)"
               @copy="handleCopy"
 
-              :contenteditable="isEditMode && !isColumnSelect(cIndex)"
+              :contenteditable="isEditMode && !isColumnSelect(cIndex) && !item.row.isSummary"
               @blur="!isColumnSelect(cIndex) && updateCell($event, item.originalIndex, cIndex)"
             >
               <!-- Renderizado Condicional: Select o Texto -->
-              <template v-if="isColumnSelect(cIndex)">
+              <template v-if="isColumnSelect(cIndex) && !item.row.isSummary">
                 <select
                   v-if="isEditMode"
                   :value="cell"
@@ -255,6 +268,7 @@ import { ref, onMounted, reactive, watch, computed } from 'vue';
 const props = defineProps({
   title: { type: String, default: 'Tabla de Datos' },
   headers: { type: Array, required: true, default: () => [] },
+  headerGroups: { type: Array, default: () => [] },
   data: { type: Array, required: true, default: () => [] },
   columnsConfig: { type: Object, default: () => ({}) },
   // Nuevas props para Paginación y Filtrado backend
@@ -346,6 +360,7 @@ const filteredGrid = computed(() => {
     const activeCols = Object.keys(activeFilters.value);
     if (activeCols.length > 0) {
         result = result.filter(item => {
+            if (item.row.isSummary) return true; // Mantener las filas de resumen siempre visibles
             return activeCols.every(colIndex => {
                 const allowedValues = activeFilters.value[colIndex];
                 if (!allowedValues) return true;
@@ -359,7 +374,10 @@ const filteredGrid = computed(() => {
         const { colIndex, direction } = sortState.value;
         const isSelect = isColumnSelect(colIndex);
 
-        result.sort((a, b) => {
+        const dataRows = result.filter(item => !item.row.isSummary);
+        const summaryRows = result.filter(item => item.row.isSummary);
+
+        dataRows.sort((a, b) => {
             let valA = a.row[colIndex];
             let valB = b.row[colIndex];
 
@@ -382,6 +400,8 @@ const filteredGrid = computed(() => {
             if (valA > valB) return direction === 'asc' ? 1 : -1;
             return 0;
         });
+        
+        result = [...dataRows, ...summaryRows]; // Reensamblar dejando el resumen al final
     }
 
     return result;
@@ -395,7 +415,7 @@ const currentUniqueValues = computed(() => {
     // Si tenemos filterData y el filtrado es de servidor, usamos filterData para extraer opciones
     const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
                         ? props.filterData 
-                        : localGrid.value;
+                        : localGrid.value.filter(row => !row.isSummary); // Excluir resumen de los valores únicos
     
     const values = new Set(sourceData.map(row => String(row[openMenuIndex.value] || '')));
     return Array.from(values).sort();
@@ -433,7 +453,7 @@ const toggleFilterMenu = (index, event) => {
     } else {
         const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
                             ? props.filterData 
-                            : localGrid.value;
+                            : localGrid.value.filter(row => !row.isSummary);
         tempSelectedValues.value = new Set(sourceData.map(row => String(row[index] || '')));
     }
 };
@@ -457,7 +477,7 @@ const applyFilter = () => {
     
     const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
                         ? props.filterData 
-                        : localGrid.value;
+                        : localGrid.value.filter(row => !row.isSummary);
     const allValues = new Set(sourceData.map(row => String(row[index] || '')));
     
     // Preparar objeto de filtro que se enviará arriba
@@ -521,7 +541,12 @@ const calculateAutoWidths = () => {
 
 const initGrid = () => {
   if (props.data && props.data.length > 0) {
-    localGrid.value = JSON.parse(JSON.stringify(props.data));
+    localGrid.value = props.data.map(row => {
+      const newRow = [...row];
+      if (row._taskIds) Object.defineProperty(newRow, '_taskIds', { value: { ...row._taskIds }, enumerable: false, writable: true });
+      if (row.isSummary) Object.defineProperty(newRow, 'isSummary', { value: true, enumerable: false, writable: true });
+      return newRow;
+    });
   } else {
     localGrid.value = [];
   }
@@ -533,7 +558,12 @@ const initGrid = () => {
 
 watch(() => props.data, (newData) => {
   if (newData) {
-    localGrid.value = JSON.parse(JSON.stringify(newData));
+    localGrid.value = newData.map(row => {
+      const newRow = [...row];
+      if (row._taskIds) Object.defineProperty(newRow, '_taskIds', { value: { ...row._taskIds }, enumerable: false, writable: true });
+      if (row.isSummary) Object.defineProperty(newRow, 'isSummary', { value: true, enumerable: false, writable: true });
+      return newRow;
+    });
     rowHeights.value = localGrid.value.map(() => DEFAULT_ROW_HEIGHT);
     if (colWidths.value.length === 0 || colWidths.value.length !== props.headers.length) {
         calculateAutoWidths();
@@ -782,4 +812,17 @@ onMounted(() => { initGrid(); });
 .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
 .modal-content { background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2); width: 400px; text-align: center; }
 .modal-actions { margin-top: 20px; display: flex; justify-content: center; gap: 15px; }
+
+
+.summary-cell {
+  background-color: #f8f9fa !important;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.group-header-cell {
+  background-color: #e5e7eb !important;
+  color: #374151;
+  font-size: 14px;
+}
 </style>

@@ -9,6 +9,9 @@ from rest_framework.views import APIView
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
+from django.db.models import F, Value
+from django.db.models.functions import Concat
+from django.contrib.postgres.aggregates import StringAgg
 
 # ViewSet para cada modelo con un nuevo endpoint `/schema/`
 class EstadoViewSet(viewsets.ModelViewSet):
@@ -276,7 +279,28 @@ class AssayViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in Assay._meta.fields]
         return Response({'fields': fields})
 
+class CalendarViewSet(viewsets.ModelViewSet):
+    queryset = Calendar.objects.all()
+    serializer_class = CalendarSerializer
+    
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in'],
+        'date': ['exact', 'in', 'gte', 'lte'],
+        'year': ['exact', 'in'],
+        'week': ['exact', 'in'],
+        'group': ['exact', 'in'],
+        'turn': ['exact', 'in', 'icontains']
+    }
+    ordering_fields = ['id', 'date', 'year', 'week']
 
+    @action(detail=False, methods=['get'], url_path='schema')
+    def schema(self, request):
+        fields = [field.name for field in Calendar._meta.fields]
+        return Response({'fields': fields})
+
+class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
+    queryset = UserP.objects.all()
 
 
 class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
@@ -298,19 +322,52 @@ class WeeklyTaskView(APIView):
         if not week or not year:
              return Response({"error": "Faltan parámetros week y year"}, status=400)
 
-        # Obtenemos todas las tareas de la semana con JOINs optimizados
-        tareas = TaskP.objects.filter(week=week, year=year).select_related(
-            'task__equipment__area__plant',
-            'task__equipment__system',
-            'estado'
-        ).order_by('date') # Asegúrate de tener un orden o usa .order_by('date')
+        # Construcción de la consulta avanzada utilizando el ORM de Django
+        tareas = TaskP.objects.filter(
+            week=week, 
+            year=year
+        ).values(
+            'id', 
+            'date',
+            'estado_id',
+            anio=F('year'),
+            semana=F('week'),
+            fecha=F('date'),
+            dia_semana=F('day'),
+            planta=F('task__equipment__area__plant__name'),
+            area=F('task__equipment__area__name'),
+            sistema=F('task__equipment__system__name'),
+            tarea_descripcion=F('task__name'),
+            tarea_detalle=F('task__description'),
+            equipo=F('task__equipment__name'),
+            equipo_desc=F('task__equipment__description'),
+            turno=F('task__turn'),
+            estado_nombre=F('estado__estado_nombre')
+        ).annotate(
+            cuadrilla_grupo=StringAgg(
+                'taskgroupassignment__calendar__group__name', 
+                delimiter=' / ', 
+                distinct=True
+            ),
+            usuarios_asignados=StringAgg(
+                'taskgroupassignment__calendar__group__user__nombre', 
+                 
+                
+                #Concat(
+                #    'taskgroupassignment__calendar__group__user__nombre', 
+                #    Value(' '), 
+                #    'taskgroupassignment__calendar__group__user__apellido'
+                #), 
+                delimiter=', ', 
+                distinct=True
+            )
+        ).order_by('date', 'task__turn')
 
-        serializer = WeeklyTaskSerializer(tareas, many=True)
-        return Response(serializer.data)
+        return Response(list(tareas))
 
     def post(self, request):
         # Endpoint para guardar cambios masivos desde ExcelGrid
         updates = request.data.get('updates', [])
         for item in updates:
-            TaskP.objects.filter(id=item['id']).update(estado_id=item['estado'])
+            TaskP.objects.filter(id=item['id']).update(estado_id=item['estado_id'])
         return Response({"status": "success"})

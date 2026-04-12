@@ -15,6 +15,10 @@
         <li><router-link to="/sampling">Muestreo</router-link></li>
         <li><router-link to="/excel-test">Prueba Excel</router-link></li>
         <li><router-link to="/calendario-grupos">Rotación de Grupos</router-link></li>
+        <!-- Añade estos enlaces `<router-link>` debajo de las pestañas que ya tienes (Ej: Tareas, Equipos) -->
+        <li><router-link to="/users">Usuarios</router-link></li>
+        <li><router-link to="/userp">Grupos</router-link></li>
+
 
     </ul>
 </div>

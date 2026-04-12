@@ -243,6 +243,8 @@
 import { ref, computed, onMounted } from 'vue';
 // Importa la instancia de API para realizar peticiones HTTP
 import { api } from '../../api';
+// Importamos explícitamente nuestro composable de uso de API
+import { useApi } from './useApi';
 
 // --- Estado Reactivo ---
 // Almacena la fecha seleccionada por defecto es la fecha actual (ISO string)
@@ -270,18 +272,13 @@ const userOptions = ref([]);
 // Lista de opciones para el selector de Operadores (Strings únicos)
 const metaUserOptions = ref([]);
 
-// Estado de carga para mostrar spinner o mensaje
-const loading = ref(false);
-// Estado de error para mostrar mensajes de fallo
-const error = ref('');
+// Extraemos estados reactivos globales de red (loading, error) y la función execute
+const { loading, error, execute } = useApi();
 
 // --- Función de Carga de Datos ---
 const loadData = async () => {
-  // Inicia el estado de carga
-  loading.value = true;
-  // Limpia errores previos
-  error.value = '';
-  try {
+  // Delegamos el control del flujo try/catch/finally a `execute`
+  await execute(async () => {
     // Realiza múltiples peticiones en paralelo para cargar todos los datos necesarios
     const [assaysRes, samplesRes, usersRes, userPsRes, equipRes, plantsRes, areasRes] = await Promise.all([
       api.get('assays/'),    // Obtiene ensayos
@@ -349,16 +346,8 @@ const loadData = async () => {
                 label: `${e.name} - ${e.description}` // Formato: Nombre - Descripción
             };
         }).sort((a,b) => a.label.localeCompare(b.label)); // Ordena alfabéticamente
-
-  } catch (err) {
-    // Registra error en consola
-    console.error("Error cargando datos:", err);
-    // Muestra mensaje de error al usuario
-    error.value = "Error al cargar los datos del servidor.";
-  } finally {
-    // Finaliza el estado de carga
-    loading.value = false;
-  }
+  // Mensaje de fallo explícito por si alguna promesa de configuración falla
+  }, 'Error al cargar los datos del servidor.');
 };
 
 // --- Propiedades Computadas ---

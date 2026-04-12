@@ -7,11 +7,13 @@ from .models import *
 from .serializers import *
 from rest_framework.views import APIView
 
+# Importaciones adicionales para el filtrado avanzado y el modelo User de Django
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
 from django.db.models import F, Value
 from django.db.models.functions import Concat
 from django.contrib.postgres.aggregates import StringAgg
+from django_filters import rest_framework as django_filters
 
 # ViewSet para cada modelo con un nuevo endpoint `/schema/`
 class EstadoViewSet(viewsets.ModelViewSet):
@@ -195,7 +197,12 @@ class TaskPViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in TaskP._meta.fields]
         return Response({'fields': fields})
 
+# --- VISTAS CORREGIDAS PARA USUARIOS Y GRUPOS ---
+
 class UserViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint para el modelo personalizado User (works4cdp_user).
+    """
     queryset = User.objects.all()
     serializer_class = UserSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
@@ -203,9 +210,11 @@ class UserViewSet(viewsets.ModelViewSet):
         'id': ['exact', 'in'],
         'nombre': ['exact', 'in', 'icontains'],
         'apellido': ['exact', 'in', 'icontains'],
-        'email': ['exact', 'in', 'icontains']
+        'email': ['exact', 'in', 'icontains'],
+        'rol': ['exact', 'in', 'icontains'],
+        'group': ['exact', 'in']
     }
-    ordering_fields = ['id', 'nombre', 'apellido', 'email']
+    ordering_fields = ['id', 'nombre', 'apellido', 'group']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -300,19 +309,18 @@ class CalendarViewSet(viewsets.ModelViewSet):
         return Response({'fields': fields})
 
 class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
-    queryset = UserP.objects.all()
-
-
-class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
+    """
+    API endpoint para el modelo de Grupos (UserP).
+    Se ha corregido para eliminar la duplicación y usar los nombres de campo correctos.
+    """
     queryset = UserP.objects.all()
     serializer_class = UserPSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
         'id': ['exact', 'in'],
-        'name': ['exact', 'in', 'icontains'],
+        'name': ['exact', 'in', 'icontains']
     }
     ordering_fields = ['id', 'name']
-
 
 class WeeklyTaskView(APIView):
     def get(self, request):

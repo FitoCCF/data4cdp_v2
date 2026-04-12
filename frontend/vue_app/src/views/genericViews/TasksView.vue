@@ -54,6 +54,8 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importación de la instancia de Axios configurada para llamar al backend
 import { api } from '../../api';
+// Importamos explícitamente nuestro composable de uso de API
+import { useApi } from './useApi';
 
 // Configuración estática de los encabezados (columnas) que mostrará la tabla
 const headers = ['ID', 'Nombre', 'Duración (min)', 'Trabajadores', 'Frecuencia', 'Fecha Inicio', 'Descripción', 'Procedimiento', 'Turno', 'Equipo'];
@@ -61,8 +63,9 @@ const headers = ['ID', 'Nombre', 'Duración (min)', 'Trabajadores', 'Frecuencia'
 // ===== Definición del Estado Reactivo =====
 const tasksData = ref([]);
 const equipmentsList = ref([]); // Lista de equipos para el cuadro desplegable (dropdown) en la tabla
-const loading = ref(false);
-const error = ref(null);
+
+// Extraemos las variables reactivas y la función envoltorio 'execute' del composable
+const { loading, error, execute } = useApi();
 
 // ===== Estado de Paginación y Filtrado =====
 const currentPage = ref(1);
@@ -115,10 +118,8 @@ const columnsConfig = computed(() => {
  * Función asíncrona principal que carga los datos de tareas y equipos simultáneamente.
  */
 const loadData = async (page = 1) => {
-  loading.value = true;
-  error.value = null;
-
-  try {
+  // Envolvemos toda la lógica en la función execute para que autogestione loading y error
+  await execute(async () => {
     const params = { 
         page, 
         page_size: pageSize.value 
@@ -196,13 +197,8 @@ const loadData = async (page = 1) => {
         // Extraemos su ID. ExcelGrid convertirá automáticamente este ID en su "nombre" visualmente
         (t.equipment && typeof t.equipment === 'object') ? t.equipment.id : (t.equipment || '')
     ]);
-
-  } catch (err) {
-    console.error('Error cargando tareas:', err);
-    error.value = 'Error al cargar los datos de la base de datos.';
-  } finally {
-    loading.value = false;
-  }
+  // Se declara explícitamente el mensaje a usar si la promesa falla
+  }, 'Error al cargar los datos de la base de datos.');
 };
 
 const handlePageChange = (newPage) => {
@@ -225,64 +221,63 @@ const handleSortChange = (sortConfig) => {
 };
 
 const handleSave = async (updatedGrid) => {
-  loading.value = true;
   try {
-    const promises = updatedGrid.map(async (row) => {
-        const id = row[0];
-        
-        const payload = {
-            name: row[1],
-            duration: row[2] ? row[2] : null,
-            workers: row[3] ? row[3] : null,
-            frequency: row[4],
-            start_date: row[5] ? row[5] : null,
-            description: row[6],
-            procedure: row[7],
-            turn: row[8],
-            equipment: row[9] // ID del equipo
-        };
+    // Usamos execute para manejar el spinner mientras se envía la data
+    await execute(async () => {
+        const promises = updatedGrid.map(async (row) => {
+            const id = row[0];
+            
+            const payload = {
+                name: row[1],
+                duration: row[2] ? row[2] : null,
+                workers: row[3] ? row[3] : null,
+                frequency: row[4],
+                start_date: row[5] ? row[5] : null,
+                description: row[6],
+                procedure: row[7],
+                turn: row[8],
+                equipment: row[9] // ID del equipo
+            };
 
-        // Prevención de envíos de strings vacíos para un campo foráneo numérico
-        if (!payload.equipment) delete payload.equipment;
+            // Prevención de envíos de strings vacíos para un campo foráneo numérico
+            if (!payload.equipment) delete payload.equipment;
 
-        if (id && String(id).trim() !== '') {
-            return api.put(`tasks/${id}/`, payload);
-        } else {
-            if (payload.name) {
-                return api.post('tasks/', payload);
+            if (id && String(id).trim() !== '') {
+                return api.put(`tasks/${id}/`, payload);
+            } else {
+                if (payload.name) {
+                    return api.post('tasks/', payload);
+                }
             }
-        }
+        });
+
+        await Promise.all(promises);
+        alert('Cambios guardados correctamente en la base de datos.');
+        
+        await loadData();
+        await loadFilterData();
     });
-
-    await Promise.all(promises);
-    alert('Cambios guardados correctamente en la base de datos.');
-    
-    await loadData();
-    await loadFilterData();
-
   } catch (err) {
-    console.error('Error guardando tareas:', err);
+    // Se conserva la alerta visual original en caso de error
     alert('Error al guardar los cambios en la base de datos.');
-  } finally {
-    loading.value = false;
   }
 };
 
 const handleDelete = async (idsToDelete) => {
     if (!idsToDelete || idsToDelete.length === 0) return;
 
-    loading.value = true;
     try {
-        const deletePromises = idsToDelete.map(id => api.delete(`tasks/${id}/`));
-        await Promise.all(deletePromises);
-        alert(`${idsToDelete.length} tarea(s) eliminada(s) correctamente.`);
-        await loadFilterData();
+        // Envolvemos el borrado iterativo con el composable
+        await execute(async () => {
+            const deletePromises = idsToDelete.map(id => api.delete(`tasks/${id}/`));
+            await Promise.all(deletePromises);
+            alert(`${idsToDelete.length} tarea(s) eliminada(s) correctamente.`);
+            await loadFilterData();
+        });
     } catch (err) {
-        console.error('Error eliminando tareas:', err);
+        // Se conserva la alerta de fallo
         alert('Error al eliminar las filas.');
         await loadData();
-    } finally {
-        loading.value = false;
     }
 };
 

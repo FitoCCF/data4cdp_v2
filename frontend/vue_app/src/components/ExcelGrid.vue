@@ -133,7 +133,7 @@
               :class="{
                 'active': activeCell.r === visualIndex && activeCell.c === cIndex,
                 'selected': isSelected(visualIndex, cIndex),
-                'read-only': !isEditMode || item.row.isSummary,
+                'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
                 'summary-cell': item.row.isSummary
               }"
               @mousedown="startSelection(visualIndex, cIndex)"
@@ -143,7 +143,7 @@
               @keydown="handleKeydown($event, visualIndex, cIndex)"
               @copy="handleCopy"
 
-              :contenteditable="isEditMode && !isColumnSelect(cIndex) && !item.row.isSummary"
+              :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !item.row.isSummary"
               @blur="!isColumnSelect(cIndex) && updateCell($event, item.originalIndex, cIndex)"
             >
               <!-- Renderizado Condicional: Select o Texto -->

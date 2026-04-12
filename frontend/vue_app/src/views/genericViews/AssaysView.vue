@@ -59,6 +59,8 @@
 import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
+// Importación explícita del composable useApi
+import { useApi } from './useApi';
 
 // ============================================================================
 // 1. CONFIGURACIÓN DE COLUMNAS
@@ -88,8 +90,9 @@ const samplesList = ref([]); // Lista de muestras del equipo seleccionado
 const usersList = ref([]);   // Lista de usuarios
 
 const selectedEquipmentId = ref(null);
-const loading = ref(false);
-const error = ref(null);
+
+// Inyectamos el estado de red a través de useApi
+const { loading, error, execute } = useApi();
 
 // Estado Paginación y Filtrado
 const currentPage = ref(1);
@@ -132,9 +135,8 @@ const columnsConfig = computed(() => {
  * Carga inicial: Obtiene solo los equipos del sistema "Analizadores" y todos los usuarios.
  */
 const loadInitialData = async () => {
-    loading.value = true;
-    error.value = null;
-    try {
+    // Utilizamos execute y definimos un custom error literal al final de la función
+    await execute(async () => {
         // 1. Buscar el sistema llamado "Analizadores"
         const systemRes = await api.get('systems/', { params: { name__icontains: 'Analizadores' } });
         const systems = systemRes.data.results ? systemRes.data.results : systemRes.data;
@@ -168,13 +170,8 @@ const loadInitialData = async () => {
         } else if (analyzerSystemId) {
             error.value = 'El sistema Analizadores existe, pero no tiene equipos asociados.';
         }
-
-    } catch (err) {
-        console.error('Error cargando equipos iniciales:', err);
-        error.value = 'Error al cargar la lista de equipos del sistema Analizadores.';
-    } finally {
-        loading.value = false;
-    }
+    // El segundo parámetro de execute sobreescribirá la variable error si la promesa falla
+    }, 'Error al cargar la lista de equipos del sistema Analizadores.');
 };
 
 /**
@@ -224,10 +221,8 @@ const loadFilterData = async () => {
 const loadData = async (page = 1) => {
     if (!selectedEquipmentId.value) return;
 
-    loading.value = true;
-    error.value = null;
-
-    try {
+    // El catch interno de este método se elimina, porque execute ya formatea y vuelca los errores del servidor
+    await execute(async () => {
         const params = {
             sample__equipment: selectedEquipmentId.value, // Filtro inicial por Equipo
             page,
@@ -297,17 +292,7 @@ const loadData = async (page = 1) => {
                 return value;
             });
         });
-
-    } catch (err) {
-        console.error('Error cargando los ensayos:', err);
-        if (err.response) {
-            error.value = `Error del servidor (${err.response.status}): ${JSON.stringify(err.response.data)}`;
-        } else {
-            error.value = `Error de conexión: ${err.message}`;
-        }
-    } finally {
-        loading.value = false;
-    }
+    }); // Sin mensaje personalizado; useApi.js reportará el estado real del servidor HTTP
 };
 
 // --- Manejadores de Eventos del Componente ExcelGrid ---
@@ -321,76 +306,57 @@ const handleSortChange = (sortConfig) => { currentSort.value = sortConfig; loadD
 // ============================================================================
 
 const handleSave = async (updatedGrid) => {
-    loading.value = true;
-    error.value = null;
-
     try {
-        const promises = updatedGrid.map(row => {
-            const payload = {};
-            colKeys.forEach((key, index) => {
-                let val = row[index];
+        // Envolvemos exclusivamente las peticiones que impactan la BD
+        await execute(async () => {
+            const promises = updatedGrid.map(row => {
+                const payload = {};
+                colKeys.forEach((key, index) => {
+                    let val = row[index];
+                    let payloadKey = key === 'userp' ? 'user' : key;
+                    payload[payloadKey] = val === '' ? null : val;
+                });
 
-                // Mapeo seguro en caso de que alguna clave difiera entre el front y el back
-                let payloadKey = key;
-                if (key === 'userp') payloadKey = 'user';
-
-                payload[payloadKey] = val === '' ? null : val;
+                const id = payload.id;
+                if (id && String(id).toLowerCase() !== 'nuevo' && id !== '') {
+                    return api.put(`assays/${id}/`, payload);
+                } else {
+                    delete payload.id;
+                    return api.post('assays/', payload);
+                }
             });
 
-            const id = payload.id;
-
-            if (id && String(id).toLowerCase() !== 'nuevo' && id !== '') {
-                return api.put(`assays/${id}/`, payload);
-            } else {
-                delete payload.id;
-                return api.post('assays/', payload);
-            }
+            await Promise.all(promises);
+            alert('Cambios guardados correctamente.');
+            await loadData(currentPage.value);
+            await loadFilterData();
         });
-
-        await Promise.all(promises);
-        alert('Cambios guardados correctamente.');
-        await loadData(currentPage.value);
-        await loadFilterData();
-
     } catch (err) {
-        console.error('Error guardando ensayos:', err);
-        if (err.response) {
-            error.value = `Error al guardar (${err.response.status}): ${JSON.stringify(err.response.data)}`;
-        } else {
-            error.value = 'Ocurrió un error al intentar guardar los cambios.';
-        }
+        // Conservamos solo la alerta de UI y el catch genérico de Axios lo maneja useApi
         alert('Error al guardar. Revisa el mensaje de error en pantalla.');
-    } finally {
-        loading.value = false;
     }
 };
 
 const handleDelete = async (idsToDelete) => {
     if (!idsToDelete || idsToDelete.length === 0) return;
 
-    loading.value = true;
-    error.value = null;
-
     try {
-        const deletePromises = idsToDelete.map(id => api.delete(`assays/${id}/`));
-        await Promise.all(deletePromises);
-        alert(`${idsToDelete.length} ensayo(s) eliminado(s) correctamente.`);
+        // Bloqueamos la vista mientras se eliminan registros iterativamente
+        await execute(async () => {
+            const deletePromises = idsToDelete.map(id => api.delete(`assays/${id}/`));
+            await Promise.all(deletePromises);
+            alert(`${idsToDelete.length} ensayo(s) eliminado(s) correctamente.`);
 
-        // Ajustar página si se elimina toda la última hoja
-        let pageToLoad = currentPage.value;
-        if (idsToDelete.length >= assaysData.value.length && pageToLoad > 1) {
-            pageToLoad -= 1;
-        }
+            let pageToLoad = currentPage.value;
+            if (idsToDelete.length >= assaysData.value.length && pageToLoad > 1) {
+                pageToLoad -= 1;
+            }
 
-        await loadData(pageToLoad);
-        await loadFilterData();
-
+            await loadData(pageToLoad);
+            await loadFilterData();
+        });
     } catch (err) {
-        console.error('Error eliminando ensayos:', err);
-        error.value = 'Error al eliminar los registros.';
         alert('Ocurrió un error al eliminar los registros.');
-    } finally {
-        loading.value = false;
     }
 };
 

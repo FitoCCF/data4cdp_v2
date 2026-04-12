@@ -19,6 +19,11 @@
       :columnsConfig="dashboardConfig"
       @save="handleSaveFromGrid"
     />
+
+    <!-- Agregamos el indicador visual de carga apoyado en el composable -->
+    <div v-if="loading" class="loading-overlay">Cargando planificación...</div>
+    <!-- Agregamos el banner de alerta en caso de fallos nativos de Axios -->
+    <div v-if="error" class="error-message">{{ error }}</div>
   </div>
 </template>
 
@@ -26,12 +31,17 @@
 import { ref, onMounted, watch, reactive } from 'vue';
 import { api } from '../../api'; // Ajustado según tu árbol
 import ExcelGrid from '../../components/ExcelGrid.vue'; // Subir dos niveles: genericViews -> views -> src/components
+// Importamos la utilidad global para el manejo de las peticiones
+import { useApi } from './useApi';
 
 // ESTADO
 const semanaActiva = ref(3289);
 const currentYear = ref(2026);
 const gridData = ref([]);
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+
+// Desestructuramos loading, error y la función ejecutora para nuestra API
+const { loading, error, execute } = useApi();
 
 // ESTADO PARA EL RESUMEN DE PERSONAL (Usamos Sets para evitar usuarios duplicados en el mismo día)
 const personalDia = reactive({ Lunes: new Set(), Martes: new Set(), Miércoles: new Set(), Jueves: new Set(), Viernes: new Set(), Sábado: new Set(), Domingo: new Set() });
@@ -71,7 +81,8 @@ const dashboardConfig = {
 
 // CARGA Y TRANSFORMACIÓN
 const cargarDatos = async () => {
-  try {
+  // Envolvemos el cuerpo completo en execute para que lance la vista de "Cargando planificación..."
+  await execute(async () => {
     const res = await api.get(`/weekly-tasks/?week=${semanaActiva.value}&year=${currentYear.value}`);
     const data = res.data;
 
@@ -112,12 +123,20 @@ const cargarDatos = async () => {
       // Acumular usuarios para el panel inferior
       if (t.usuarios_asignados) {
         const users = t.usuarios_asignados.split(',').map(u => u.trim()).filter(Boolean);
-        // Identificar si el turno es de noche (B o N)
-        const isNoche = (t.turno === 'N' || t.turno === 'B' || String(t.turno).toLowerCase().includes('noche'));
-        const targetSet = isNoche ? personalNoche[t.dia_semana] : personalDia[t.dia_semana];
+        const strTurno = String(t.turno || '').toUpperCase();
         
-        if (targetSet) {
-          users.forEach(u => targetSet.add(u));
+        // Clasificamos el turno
+        const isNoche = (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE'));
+        const isAmbos = (strTurno === 'AB' || strTurno === 'DN');
+        
+        if (isAmbos) {
+          // Si es un turno de 24h, el personal trabaja en ambos
+          users.forEach(u => { personalDia[t.dia_semana].add(u); personalNoche[t.dia_semana].add(u); });
+        } else if (isNoche) {
+          users.forEach(u => personalNoche[t.dia_semana].add(u));
+        } else {
+          // Por defecto asume turno Día (A, D)
+          users.forEach(u => personalDia[t.dia_semana].add(u));
         }
       }
 
@@ -137,6 +156,8 @@ const cargarDatos = async () => {
         let turnoLabel = t.turno || '';
         if (t.turno === 'A') turnoLabel = 'D';
         else if (t.turno === 'B') turnoLabel = 'N';
+        else if (t.turno === 'AB') turnoLabel = 'DN';
+        
 
         // Buscar una fila existente para esta tarea donde el día esté vacío
         let targetRow = mapa[baseKey].find(row => row[colIndices.e] === "");
@@ -182,10 +203,24 @@ const cargarDatos = async () => {
     const rowActAB = createSummaryRow("Actividades Turno AB", dia => countTareasAB[dia]);
     const rowActTotal = createSummaryRow("Total de Actividades", dia => countTareasTotal[dia]);
     
+    // Funciones auxiliares para detectar personal duplicado (fatiga/doble turno)
+    const getNombresDia = (dia) => {
+      return Array.from(personalDia[dia]).map(u => {
+        // Si el trabajador también está registrado en la noche de este mismo día, lanzamos alerta
+        return personalNoche[dia].has(u) ? `⚠️ ${u} (Doble)` : u;
+      }).join('\n') || '-';
+    };
+
+    const getNombresNoche = (dia) => {
+      return Array.from(personalNoche[dia]).map(u => {
+        return personalDia[dia].has(u) ? `⚠️ ${u} (Doble)` : u;
+      }).join('\n') || '-';
+    };
+
     const countDiaRow = createSummaryRow("Cant. Personal Día", dia => personalDia[dia].size || 0);
-    const namesDiaRow = createSummaryRow("Nombres Personal Día", dia => Array.from(personalDia[dia]).join('\n') || '-');
+    const namesDiaRow = createSummaryRow("Nombres Personal Día", getNombresDia);
     const countNocheRow = createSummaryRow("Cant. Personal Noche", dia => personalNoche[dia].size || 0);
-    const namesNocheRow = createSummaryRow("Nombres Personal Noche", dia => Array.from(personalNoche[dia]).join('\n') || '-');
+    const namesNocheRow = createSummaryRow("Nombres Personal Noche", getNombresNoche);
 
     newData.push(
       emptyRow, 
@@ -200,9 +235,8 @@ const cargarDatos = async () => {
     );
 
     gridData.value = newData;
-  } catch (error) {
-    console.error("Error al cargar Weekly Tasks:", error);
-  }
+  // Registramos un string para que actualice la variable 'error.value' nativamente si cae
+  }, 'Error al cargar Weekly Tasks desde el servidor.');
 };
 
 // GUARDADO DESDE EL COMPONENTE GENÉRICO
@@ -228,10 +262,14 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
   if (updates.length === 0) return;
 
   try {
-    await api.post('/weekly-tasks/bulk-update/', { updates });
-    alert("Cambios guardados con éxito.");
-    await cargarDatos();
-  } catch (error) {
+    // Envolvemos el guardado masivo para bloquear la UI mientras dure la red
+    await execute(async () => {
+      await api.post('/weekly-tasks/bulk-update/', { updates });
+      alert("Cambios guardados con éxito.");
+      await cargarDatos();
+    });
+  } catch (err) {
+    // Mantenemos la alerta manual del programador si el guardado falla
     alert("Error al sincronizar con el servidor.");
   }
 };
@@ -266,5 +304,26 @@ onMounted(cargarDatos);
 /* Permitir saltos de línea (pre-wrap) en las celdas de resumen dentro del ExcelGrid */
 :deep(.summary-cell) {
   white-space: pre-wrap !important;
+}
+
+/* Estilos inyectados para el overlay de carga y error */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+  font-size: 1.2rem;
+  z-index: 100;
+}
+.error-message {
+  color: red;
+  text-align: center;
+  margin-top: 10px;
 }
 </style>

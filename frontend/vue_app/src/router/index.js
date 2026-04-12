@@ -71,6 +71,17 @@ const router = createRouter({
             name: 'GroupSchedule',
             component: () => import('../views/genericViews/GroupScheduleView.vue')
 
+        },
+        // Rutas añadidas para los nuevos mantenimientos de Usuarios y Grupos
+        {
+            path: '/users',
+            name: 'Users',
+            component: () => import('../views/genericViews/UsersView.vue')
+        },
+        {
+            path: '/userp',
+            name: 'UserGroups',
+            component: () => import('../views/genericViews/UserPsView.vue')
         }
 
     ]

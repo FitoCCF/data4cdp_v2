@@ -27,17 +27,18 @@ import { ref, onMounted } from 'vue';
 // Subimos un nivel en la estructura para alcanzar components/
 import ExcelGrid from '../../components/ExcelGrid.vue'; 
 import { api } from '../../api';
+// Se importa el composable para estandarizar las conexiones API
+import { useApi } from './useApi';
 
 const gridColumns = ref([]);
 const gridData = ref([]);
-const loading = ref(false);
-const error = ref(null);
+
+// Sustituimos las variables manuales por las que expone el composable
+const { loading, error, execute } = useApi();
 
 const loadCalendarData = async () => {
-  loading.value = true;
-  error.value = null;
-  
-  try {
+  // Utilizamos execute para automatizar la transición visual del overlay
+  await execute(async () => {
     // Si tu endpoint se llama distinto en Django, cambia 'calendars/' por 'calendar/' 
     const response = await api.get('calendars/', { params: { page_size: 10000 } });
     let data = response.data.results || response.data;
@@ -87,13 +88,8 @@ const loadCalendarData = async () => {
     });
 
     gridData.value = rows;
-
-  } catch (err) {
-    console.error('Error cargando los datos del calendario:', err);
-    error.value = 'Ocurrió un error al intentar obtener el calendario desde la base de datos.';
-  } finally {
-    loading.value = false;
-  }
+  // Declaramos explícitamente el mensaje de fallback de la vista
+  }, 'Ocurrió un error al intentar obtener el calendario desde la base de datos.');
 };
 
 onMounted(() => {

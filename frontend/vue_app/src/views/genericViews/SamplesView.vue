@@ -43,6 +43,8 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importación del cliente API
 import { api } from '../../api';
+// Importación del composable genérico de peticiones HTTP
+import { useApi } from './useApi';
 
 // --- Configuración de la Tabla ---
 
@@ -56,10 +58,9 @@ const headers = ['ID', 'Tag', 'Nombre', 'Equipo'];
 const samplesData = ref([]);
 // Almacena la lista completa de objetos de equipo para el dropdown
 const equipmentsList = ref([]);
-// Controla la visibilidad del overlay de carga
-const loading = ref(false);
-// Almacena el mensaje de error a mostrar
-const error = ref(null);
+
+// Extraer estados de carga y función execute del composable
+const { loading, error, execute } = useApi();
 
 // Estado Paginación y Filtrado
 const currentPage = ref(1);
@@ -119,12 +120,7 @@ const columnsConfig = computed(() => {
  * Carga los datos de muestras y equipos desde el backend.
  */
 const loadData = async (page = 1) => {
-  // Activa el estado de carga
-  loading.value = true;
-  // Limpia errores previos
-  error.value = null;
-
-  try {
+  await execute(async () => {
     const params = { 
         page, 
         page_size: pageSize.value 
@@ -189,15 +185,7 @@ const loadData = async (page = 1) => {
         // Extrae el ID de la clave foránea 'equipment'
         (sample.equipment && typeof sample.equipment === 'object') ? sample.equipment.id : (sample.equipment || '')
     ]);
-
-  } catch (err) {
-    // Manejo de errores de la petición
-    console.error('Error cargando datos:', err);
-    error.value = 'Error al cargar los datos de la base de datos.';
-  } finally {
-    // Desactiva el estado de carga, independientemente del resultado
-    loading.value = false;
-  }
+  }, 'Error al cargar los datos de la base de datos.');
 };
 
 const handlePageChange = (newPage) => {
@@ -224,49 +212,37 @@ const handleSortChange = (sortConfig) => {
  * @param {Array} updatedGrid - La matriz de datos actualizada desde el componente hijo.
  */
 const handleSave = async (updatedGrid) => {
-  // Activa el estado de carga
-  loading.value = true;
   try {
-    // Mapea cada fila de la matriz a una promesa de petición (PUT o POST)
-    const promises = updatedGrid.map(async (row) => {
-        const id = row[0]; // El ID está en la primera columna
-        const payload = {
-            tag: row[1],
-            name: row[2],
-            equipment: row[3] // El ID del equipo seleccionado
-        };
+    await execute(async () => {
+      // Mapea cada fila de la matriz a una promesa de petición (PUT o POST)
+      const promises = updatedGrid.map(async (row) => {
+          const id = row[0];
+          const payload = {
+              tag: row[1],
+              name: row[2],
+              equipment: row[3]
+          };
 
-        // Si el ID de equipo es nulo o vacío, no lo envía en el payload
-        if (!payload.equipment) delete payload.equipment;
+          if (!payload.equipment) delete payload.equipment;
 
-        // Determina si es una actualización (PUT) o una creación (POST)
-        if (id && String(id).trim() !== '') {
-            return api.put(`samples/${id}/`, payload);
-        } else {
-            // Solo crea si hay datos mínimos (tag o nombre)
-            if (payload.tag || payload.name) {
-                return api.post('samples/', payload);
-            }
-        }
+          if (id && String(id).trim() !== '') {
+              return api.put(`samples/${id}/`, payload);
+          } else {
+              if (payload.tag || payload.name) {
+                  return api.post('samples/', payload);
+              }
+          }
+      });
+
+      await Promise.all(promises);
+      alert('Cambios guardados correctamente.');
+
+      await loadData();
+      await loadFilterData();
     });
-
-    // Espera a que todas las peticiones se completen
-    await Promise.all(promises);
-
-    // Notifica al usuario del éxito
-    alert('Cambios guardados correctamente.');
-
-    // Recarga los datos para reflejar los cambios y obtener nuevos IDs
-    await loadData();
-    await loadFilterData();
-
   } catch (err) {
     // Manejo de errores durante el guardado
-    console.error('Error guardando muestras:', err);
     alert('Error al guardar. Verifique la relación con Equipo.');
-  } finally {
-    // Desactiva el estado de carga
-    loading.value = false;
   }
 };
 
@@ -277,20 +253,17 @@ const handleSave = async (updatedGrid) => {
 const handleDelete = async (idsToDelete) => {
     if (!idsToDelete || idsToDelete.length === 0) return;
 
-    loading.value = true;
     try {
-        const deletePromises = idsToDelete.map(id => api.delete(`samples/${id}/`));
-        await Promise.all(deletePromises);
+        await execute(async () => {
+            const deletePromises = idsToDelete.map(id => api.delete(`samples/${id}/`));
+            await Promise.all(deletePromises);
 
-        alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
-        await loadFilterData();
-
+            alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
+            await loadFilterData();
+        });
     } catch (err) {
-        console.error('Error eliminando muestras:', err);
         alert('Error al eliminar las filas.');
         await loadData();
-    } finally {
-        loading.value = false;
     }
 };
 

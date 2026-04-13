@@ -237,7 +237,14 @@ const loadData = async (page = 1) => {
             if (fieldName === 'userp') fieldName = 'user';
 
             if (fieldName && values.length > 0) {
-                params[`${fieldName}__in`] = values.join(',');
+                const vals = Array.from(values);
+                const validVals = vals.filter(v => v !== '');
+                if (validVals.length > 0) {
+                    params[`${fieldName}__in`] = validVals.join(',');
+                }
+                if (vals.includes('')) {
+                    params[`${fieldName}__isnull`] = 'True';
+                }
             }
         }
 

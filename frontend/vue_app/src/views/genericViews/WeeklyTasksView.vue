@@ -84,7 +84,10 @@ const cargarDatos = async () => {
   // Envolvemos el cuerpo completo en execute para que lance la vista de "Cargando planificación..."
   await execute(async () => {
     const res = await api.get(`/weekly-tasks/?week=${semanaActiva.value}&year=${currentYear.value}`);
-    const data = res.data;
+    
+    // Extraemos las listas del nuevo formato de respuesta
+    const tasksData = res.data.tasks || res.data;
+    const calendarData = res.data.calendar || [];
 
     // Limpiamos el personal antes de procesar
     diasSemana.forEach(dia => {
@@ -99,7 +102,7 @@ const cargarDatos = async () => {
     const countTareasTotal = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
 
     const mapa = {};
-    data.forEach(t => {
+    tasksData.forEach(t => {
       // LLAVE BASE: Planta, Área, Sistema, Equipo y Tarea
       const baseKey = `${t.planta}-${t.area}-${t.sistema}-${t.equipo}-${t.tarea_descripcion}`;
       
@@ -117,26 +120,6 @@ const cargarDatos = async () => {
           countTareasNoche[t.dia_semana]++;
         } else {
           countTareasDia[t.dia_semana]++;
-        }
-      }
-
-      // Acumular usuarios para el panel inferior
-      if (t.usuarios_asignados) {
-        const users = t.usuarios_asignados.split(',').map(u => u.trim()).filter(Boolean);
-        const strTurno = String(t.turno || '').toUpperCase();
-        
-        // Clasificamos el turno
-        const isNoche = (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE'));
-        const isAmbos = (strTurno === 'AB' || strTurno === 'DN');
-        
-        if (isAmbos) {
-          // Si es un turno de 24h, el personal trabaja en ambos
-          users.forEach(u => { personalDia[t.dia_semana].add(u); personalNoche[t.dia_semana].add(u); });
-        } else if (isNoche) {
-          users.forEach(u => personalNoche[t.dia_semana].add(u));
-        } else {
-          // Por defecto asume turno Día (A, D)
-          users.forEach(u => personalDia[t.dia_semana].add(u));
         }
       }
 
@@ -184,6 +167,31 @@ const cargarDatos = async () => {
     const newData = [];
     Object.values(mapa).forEach(rows => newData.push(...rows));
 
+    // --- LLENAR ESTADÍSTICAS DE PERSONAL BASADO EN EL CALENDARIO REAL ---
+    calendarData.forEach(c => {
+      if (c.usuario_nombre) {
+        const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}`.trim();
+        const strTurno = String(c.turno || '').toUpperCase();
+        const dia = c.dia_semana;
+        
+        // Si el calendario marca descanso 'X', ignoramos a la persona ese día
+        if (strTurno === 'X' || !strTurno) return;
+
+        // Clasificamos el turno
+        const isNoche = (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE'));
+        const isAmbos = (strTurno === 'AB' || strTurno === 'DN');
+        
+        if (isAmbos) {
+          if (personalDia[dia]) personalDia[dia].add(fullName);
+          if (personalNoche[dia]) personalNoche[dia].add(fullName);
+        } else if (isNoche) {
+          if (personalNoche[dia]) personalNoche[dia].add(fullName);
+        } else {
+          if (personalDia[dia]) personalDia[dia].add(fullName);
+        }
+      }
+    });
+
     // --- GENERAR FILAS DE ESTADÍSTICAS / RESUMEN EN EL GRID ---
     const createSummaryRow = (label, dataFn) => {
       // Las 5 primeras columnas son de información, dejamos las 4 primeras vacías y usamos la columna "Tarea" (índice 4) para el label.
@@ -203,24 +211,10 @@ const cargarDatos = async () => {
     const rowActAB = createSummaryRow("Actividades Turno AB", dia => countTareasAB[dia]);
     const rowActTotal = createSummaryRow("Total de Actividades", dia => countTareasTotal[dia]);
     
-    // Funciones auxiliares para detectar personal duplicado (fatiga/doble turno)
-    const getNombresDia = (dia) => {
-      return Array.from(personalDia[dia]).map(u => {
-        // Si el trabajador también está registrado en la noche de este mismo día, lanzamos alerta
-        return personalNoche[dia].has(u) ? `⚠️ ${u} (Doble)` : u;
-      }).join('\n') || '-';
-    };
-
-    const getNombresNoche = (dia) => {
-      return Array.from(personalNoche[dia]).map(u => {
-        return personalDia[dia].has(u) ? `⚠️ ${u} (Doble)` : u;
-      }).join('\n') || '-';
-    };
-
     const countDiaRow = createSummaryRow("Cant. Personal Día", dia => personalDia[dia].size || 0);
-    const namesDiaRow = createSummaryRow("Nombres Personal Día", getNombresDia);
+    const namesDiaRow = createSummaryRow("Nombres Personal Día", dia => Array.from(personalDia[dia]).join('\n') || '-');
     const countNocheRow = createSummaryRow("Cant. Personal Noche", dia => personalNoche[dia].size || 0);
-    const namesNocheRow = createSummaryRow("Nombres Personal Noche", getNombresNoche);
+    const namesNocheRow = createSummaryRow("Nombres Personal Noche", dia => Array.from(personalNoche[dia]).join('\n') || '-');
 
     newData.push(
       emptyRow, 

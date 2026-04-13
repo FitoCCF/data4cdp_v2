@@ -155,7 +155,14 @@ const loadData = async (page = 1) => {
     Object.entries(currentFilters.value).forEach(([colIndex, values]) => {
         const fieldName = colKeys[colIndex];
         if (fieldName && values && Array.from(values).length > 0) {
-            params[`${fieldName}__in`] = Array.from(values).join(',');
+            const vals = Array.from(values);
+            const validVals = vals.filter(v => v !== '');
+            if (validVals.length > 0) {
+                params[`${fieldName}__in`] = validVals.join(',');
+            }
+            if (vals.includes('')) {
+                params[`${fieldName}__isnull`] = 'True';
+            }
         }
     });
 

@@ -240,7 +240,7 @@
       </div>
       <div class="menu-footer">
         <button class="btn btn-sm btn-gray" @click="closeFilterMenu">Cancelar</button>
-        <button class="btn btn-sm btn-blue" @click="applyFilter">Aceptar</button>
+        <button class="btn btn-sm btn-blue" @click="applyFilter" :disabled="tempSelectedValues.size === 0">Aceptar</button>
       </div>
     </div>
 
@@ -324,6 +324,10 @@ const tempSelectedValues = ref(new Set());
 
 const resizing = reactive({ active: false, type: null, index: null, startPos: 0, startSize: 0 });
 
+// --- HELPERS BÁSICOS ---
+// Extrae el texto real de forma segura. Asegura que valores como 0 o false no se conviertan en vacíos
+const getCellValueStr = (val) => (val === null || val === undefined) ? '' : String(val);
+
 // --- HELPERS PARA SELECT/DROPDOWN ---
 
 const isColumnSelect = (colIndex) => {
@@ -364,7 +368,7 @@ const filteredGrid = computed(() => {
             return activeCols.every(colIndex => {
                 const allowedValues = activeFilters.value[colIndex];
                 if (!allowedValues) return true;
-                const cellValue = String(item.row[colIndex] || '');
+                    const cellValue = getCellValueStr(item.row[colIndex]);
                 return allowedValues.has(cellValue);
             });
         });
@@ -386,8 +390,8 @@ const filteredGrid = computed(() => {
                 valB = getOptionLabel(colIndex, valB);
             }
 
-            valA = String(valA || '').toLowerCase();
-            valB = String(valB || '').toLowerCase();
+            valA = getCellValueStr(valA).toLowerCase();
+            valB = getCellValueStr(valB).toLowerCase();
 
             const numA = parseFloat(valA);
             const numB = parseFloat(valB);
@@ -412,12 +416,27 @@ const filteredGrid = computed(() => {
 const currentUniqueValues = computed(() => {
     if (openMenuIndex.value === null) return [];
     
-    // Si tenemos filterData y el filtrado es de servidor, usamos filterData para extraer opciones
-    const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
+    let sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
                         ? props.filterData 
-                        : localGrid.value.filter(row => !row.isSummary); // Excluir resumen de los valores únicos
+                        : localGrid.value.filter(row => !row.isSummary);
     
-    const values = new Set(sourceData.map(row => String(row[openMenuIndex.value] || '')));
+    // --- FILTRADO CRUZADO ---
+    // Identificamos las columnas que ya tienen filtros aplicados, excluyendo la que el usuario acaba de abrir
+    const activeCols = Object.keys(activeFilters.value).filter(col => String(col) !== String(openMenuIndex.value));
+
+    if (activeCols.length > 0) {
+        // Reducimos el universo de datos disponibles verificando que la fila cumpla con los demás filtros activos
+        sourceData = sourceData.filter(row => {
+            return activeCols.every(colIndex => {
+                const allowedValues = activeFilters.value[colIndex];
+                if (!allowedValues || allowedValues.size === 0) return true;
+                    const cellValue = getCellValueStr(row[colIndex]);
+                return allowedValues.has(cellValue);
+            });
+        });
+    }
+
+    const values = new Set(sourceData.map(row => getCellValueStr(row[openMenuIndex.value])));
     return Array.from(values).sort();
 });
 
@@ -451,10 +470,8 @@ const toggleFilterMenu = (index, event) => {
     if (activeFilters.value[index]) {
         tempSelectedValues.value = new Set(activeFilters.value[index]);
     } else {
-        const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
-                            ? props.filterData 
-                            : localGrid.value.filter(row => !row.isSummary);
-        tempSelectedValues.value = new Set(sourceData.map(row => String(row[index] || '')));
+            // Inicializamos el menú seleccionando por defecto los valores que sobrevivieron al filtrado cruzado
+            tempSelectedValues.value = new Set(currentUniqueValues.value);
     }
 };
 
@@ -475,16 +492,12 @@ const toggleSelectAll = () => {
 const applyFilter = () => {
     const index = openMenuIndex.value;
     
-    const sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
-                        ? props.filterData 
-                        : localGrid.value.filter(row => !row.isSummary);
-    const allValues = new Set(sourceData.map(row => String(row[index] || '')));
+    // Usamos los valores restringidos actuales para evaluar si el usuario ha seleccionado "(Seleccionar todo)"
+    const allValues = currentUniqueValues.value;
     
-    // Preparar objeto de filtro que se enviará arriba
-
     let newActiveFilters = { ...activeFilters.value };
 
-    if (tempSelectedValues.value.size === allValues.size) {
+    if (tempSelectedValues.value.size === allValues.length) {
         delete newActiveFilters[index];
     } else {
         newActiveFilters[index] = new Set(tempSelectedValues.value);
@@ -527,9 +540,9 @@ const calculateAutoWidths = () => {
         let maxWidth = context.measureText(header).width + 50;
         const rowsToCheck = localGrid.value.slice(0, 50);
         rowsToCheck.forEach(row => {
-            let cellText = String(row[colIndex] || '');
+                    let cellText = getCellValueStr(row[colIndex]);
             if (isColumnSelect(colIndex)) {
-                cellText = String(getOptionLabel(colIndex, row[colIndex]) || '');
+                        cellText = getCellValueStr(getOptionLabel(colIndex, row[colIndex]));
             }
             const width = context.measureText(cellText).width + 30;
             if (width > maxWidth) maxWidth = width;
@@ -691,7 +704,7 @@ const handleCopy = (e) => {
     for (let j = minC; j <= maxC; j++) {
       let val = item.row[j];
       if (isColumnSelect(j)) val = getOptionLabel(j, val);
-      rowData.push(val);
+      rowData.push(getCellValueStr(val));
     }
     textToCopy += rowData.join("\t") + (i < maxR ? "\n" : "");
   }

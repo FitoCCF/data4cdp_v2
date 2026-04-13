@@ -90,7 +90,16 @@ const loadData = async (page = 1) => {
         // Añadimos filtros activos a los parámetros GET
         for (const [colIndex, values] of Object.entries(currentFilters.value)) {
             const fieldName = colKeys[colIndex];
-            if (fieldName && values.length > 0) params[`${fieldName}__in`] = values.join(',');
+            if (fieldName && values.length > 0) {
+                const vals = Array.from(values);
+                const validVals = vals.filter(v => v !== '');
+                if (validVals.length > 0) {
+                    params[`${fieldName}__in`] = validVals.join(',');
+                }
+                if (vals.includes('')) {
+                    params[`${fieldName}__isnull`] = 'True';
+                }
+            }
         }
         
         // Añadimos ordenamiento si fue solicitado por el usuario

@@ -111,8 +111,17 @@ const loadData = async (page = 1) => {
         for (const [colIndex, values] of Object.entries(currentFilters.value)) {
             // Obtenemos el nombre real del campo (ej: 'nombre')
             const fieldName = colKeys[colIndex];
-            // Si hay un campo y valores seleccionados, aplicamos el sufijo __in de Django
-            if (fieldName && values.length > 0) params[`${fieldName}__in`] = values.join(',');
+            // Procesamos los valores y si existe un filtro por vacíos, usamos __isnull
+            if (fieldName && values.length > 0) {
+                const vals = Array.from(values);
+                const validVals = vals.filter(v => v !== '');
+                if (validVals.length > 0) {
+                    params[`${fieldName}__in`] = validVals.join(',');
+                }
+                if (vals.includes('')) {
+                    params[`${fieldName}__isnull`] = 'True';
+                }
+            }
         }
         
         // Si hay un ordenamiento activo, lo añadimos a los parámetros

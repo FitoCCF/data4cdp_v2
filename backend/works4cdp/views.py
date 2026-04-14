@@ -21,8 +21,8 @@ class EstadoViewSet(viewsets.ModelViewSet):
     serializer_class = EstadoSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'estado_nombre': ['exact', 'in', 'icontains']
+        'id': ['exact', 'in', 'isnull'],
+        'estado_nombre': ['exact', 'in', 'icontains', 'isnull']
     }
     ordering_fields = ['id', 'estado_nombre']
 
@@ -41,10 +41,10 @@ class PlantViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'tag': ['exact', 'in', 'icontains'],
-        'name': ['exact', 'in', 'icontains'],
-        'description': ['exact', 'in', 'icontains']
+        'id': ['exact', 'in', 'isnull'],
+        'tag': ['exact', 'in', 'icontains', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados (ej: ?ordering=name)
     ordering_fields = ['id', 'tag', 'name', 'description']
@@ -64,11 +64,11 @@ class AreaViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'tag': ['exact', 'in', 'icontains'],
-        'name': ['exact', 'in', 'icontains'],
-        'description': ['exact', 'in', 'icontains'],
-        'plant': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'tag': ['exact', 'in', 'icontains', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull'],
+        'plant': ['exact', 'in', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'plant']
@@ -88,10 +88,10 @@ class SystemViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'tag': ['exact', 'in', 'icontains'],
-        'name': ['exact', 'in', 'icontains'],
-        'description': ['exact', 'in', 'icontains']
+        'id': ['exact', 'in', 'isnull'],
+        'tag': ['exact', 'in', 'icontains', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description']
@@ -111,12 +111,12 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'tag': ['exact', 'in', 'icontains'],
-        'name': ['exact', 'in', 'icontains'],
-        'description': ['exact', 'in', 'icontains'],
-        'system': ['exact', 'in'],
-        'area': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'tag': ['exact', 'in', 'icontains', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull'],
+        'system': ['exact', 'in', 'isnull'],
+        'area': ['exact', 'in', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'system', 'area']
@@ -136,16 +136,16 @@ class TaskViewSet(viewsets.ModelViewSet):
     
     # Definir campos de filtrado
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'name': ['exact', 'in', 'icontains'],
-        'duration': ['exact', 'in'],
-        'workers': ['exact', 'in'],
-        'frequency': ['exact', 'in', 'icontains'],
-        'start_date': ['exact', 'in', 'gte', 'lte'],
-        'description': ['exact', 'in', 'icontains'],
-        'procedure': ['exact', 'in', 'icontains'],
-        'turn': ['exact', 'in', 'icontains'],
-        'equipment': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'duration': ['exact', 'in', 'isnull'],
+        'workers': ['exact', 'in', 'isnull'],
+        'frequency': ['exact', 'in', 'icontains', 'isnull'],
+        'start_date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull'],
+        'procedure': ['exact', 'in', 'icontains', 'isnull'],
+        'turn': ['exact', 'in', 'icontains', 'isnull'],
+        'equipment': ['exact', 'in', 'isnull']
     }
     
     # Definir campos de ordenamiento
@@ -179,14 +179,14 @@ class TaskPViewSet(viewsets.ModelViewSet):
 
     # IMPORTANTE: Cambia 'exact' por una lista que incluya 'in' para los campos clave
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'task': ['exact', 'in'],
-        'year': ['exact', 'in', 'gte', 'lte'],
-        'week': ['exact', 'in', 'gte', 'lte'],
-        'date': ['exact', 'in', 'gte', 'lte'],
-        'estado': ['exact', 'in'],
-        'group': ['exact', 'in'], # Cambiado de 'usuario' a 'group' según tu models.py
-        'rescheduled': ['exact']
+        'id': ['exact', 'in', 'isnull'],
+        'task': ['exact', 'in', 'isnull'],
+        'year': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'week': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'estado': ['exact', 'in', 'isnull'],
+        'group': ['exact', 'in', 'isnull'], 
+        'rescheduled': ['exact', 'isnull']
     }
     
     # Definir campos de ordenamiento
@@ -207,12 +207,12 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'nombre': ['exact', 'in', 'icontains'],
-        'apellido': ['exact', 'in', 'icontains'],
-        'email': ['exact', 'in', 'icontains'],
-        'rol': ['exact', 'in', 'icontains'],
-        'group': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'nombre': ['exact', 'in', 'icontains', 'isnull'],
+        'apellido': ['exact', 'in', 'icontains', 'isnull'],
+        'email': ['exact', 'in', 'icontains', 'isnull'],
+        'rol': ['exact', 'in', 'icontains', 'isnull'],
+        'group': ['exact', 'in', 'isnull']
     }
     ordering_fields = ['id', 'nombre', 'apellido', 'group']
 
@@ -226,9 +226,9 @@ class CorrectiveTaskViewSet(viewsets.ModelViewSet):
     serializer_class = CorrectiveTaskSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'description': ['exact', 'in', 'icontains'],
-        'equipment': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull'],
+        'equipment': ['exact', 'in', 'isnull']
     }
     ordering_fields = ['id', 'equipment']
 
@@ -247,10 +247,10 @@ class SampleViewSet(viewsets.ModelViewSet):
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'tag': ['exact', 'in', 'icontains'],
-        'name': ['exact', 'in', 'icontains'],
-        'equipment': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'tag': ['exact', 'in', 'icontains', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'equipment': ['exact', 'in', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'equipment']
@@ -273,12 +273,12 @@ class AssayViewSet(viewsets.ModelViewSet):
     # Especifica explícitamente qué campos pueden ser usados como filtros
     # sample__equipment permite filtrar ensayos según el equipo de su muestra
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'date': ['exact', 'in', 'gte', 'lte'],
-        'time': ['exact', 'in'],
-        'sample': ['exact', 'in'],
-        'sample__equipment': ['exact', 'in'],
-        'user': ['exact', 'in']
+        'id': ['exact', 'in', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'time': ['exact', 'in', 'isnull'],
+        'sample': ['exact', 'in', 'isnull'],
+        'sample__equipment': ['exact', 'in', 'isnull'],
+        'user': ['exact', 'in', 'isnull']
     }
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'date', 'time', 'sample', 'user']
@@ -294,12 +294,12 @@ class CalendarViewSet(viewsets.ModelViewSet):
     
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'date': ['exact', 'in', 'gte', 'lte'],
-        'year': ['exact', 'in'],
-        'week': ['exact', 'in'],
-        'group': ['exact', 'in'],
-        'turn': ['exact', 'in', 'icontains']
+        'id': ['exact', 'in', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'year': ['exact', 'in', 'isnull'],
+        'week': ['exact', 'in', 'isnull'],
+        'group': ['exact', 'in', 'isnull'],
+        'turn': ['exact', 'in', 'icontains', 'isnull']
     }
     ordering_fields = ['id', 'date', 'year', 'week']
 
@@ -317,8 +317,8 @@ class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
     serializer_class = UserPSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
-        'id': ['exact', 'in'],
-        'name': ['exact', 'in', 'icontains']
+        'id': ['exact', 'in', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull']
     }
     ordering_fields = ['id', 'name']
 

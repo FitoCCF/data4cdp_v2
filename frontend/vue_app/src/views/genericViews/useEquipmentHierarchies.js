@@ -59,26 +59,33 @@ export function useEquipmentHierarchies() {
         for (const [colIndex, values] of Object.entries(currentFilters)) {
             if (values.length === 0) continue;
 
+            const valsArray = Array.from(values);
+
             if (colIndex === plant || colIndex === area || colIndex === system) {
                 const validIds = equipmentsList.value.filter(eq => {
                     const areaObj = areasMap.value[eq.area] || {};
                     const plantObj = plantsMap.value[areaObj.plant] || {};
                     const sysObj = systemsMap.value[eq.system] || {};
 
-                    if (colIndex === plant) return values.includes(plantObj.name || '');
-                    if (colIndex === area) return values.includes(areaObj.name || '');
-                    if (colIndex === system) return values.includes(sysObj.name || '');
+                    if (colIndex === plant) return valsArray.includes(plantObj.name || '');
+                    if (colIndex === area) return valsArray.includes(areaObj.name || '');
+                    if (colIndex === system) return valsArray.includes(sysObj.name || '');
                     return false;
                 }).map(eq => String(eq.id));
 
+                // Si se incluyó "(Vacías)", agregamos explícitamente el valor vacío al arreglo de IDs válidos
+                if (valsArray.includes('')) {
+                    validIds.push('');
+                }
+
                 eqFilterIds = eqFilterIds === null ? validIds : eqFilterIds.filter(id => validIds.includes(id));
             } else if (colIndex === equipment) {
-                const stringValues = values.map(v => String(v));
+                const stringValues = valsArray.map(v => String(v));
                 eqFilterIds = eqFilterIds === null ? stringValues : eqFilterIds.filter(id => stringValues.includes(id));
             }
         }
 
-        return eqFilterIds !== null ? (eqFilterIds.length > 0 ? eqFilterIds.join(',') : '-1') : null;
+        return eqFilterIds;
     };
 
     /**
@@ -127,9 +134,17 @@ export function useEquipmentHierarchies() {
         }
 
         // 2. Manejar filtros de jerarquía, traduciéndolos a un único 'equipment__in'
-        const equipmentFilterValue = processEquipmentFilters(currentFilters, hierarchyColIndices);
-        if (equipmentFilterValue !== null) {
-            params['equipment__in'] = equipmentFilterValue;
+        const eqFilterIds = processEquipmentFilters(currentFilters, hierarchyColIndices);
+        if (eqFilterIds !== null) {
+            const validEqVals = eqFilterIds.filter(v => v !== '');
+            if (validEqVals.length > 0) {
+                params['equipment__in'] = validEqVals.join(',');
+            } else if (!eqFilterIds.includes('')) {
+                params['equipment__in'] = '-1';
+            }
+            if (eqFilterIds.includes('')) {
+                params['equipment__isnull'] = 'True';
+            }
         }
 
         return params;

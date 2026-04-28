@@ -48,7 +48,7 @@ const personalDia = reactive({ Lunes: new Set(), Martes: new Set(), Miércoles: 
 const personalNoche = reactive({ Lunes: new Set(), Martes: new Set(), Miércoles: new Set(), Jueves: new Set(), Viernes: new Set(), Sábado: new Set(), Domingo: new Set() });
 
 // CONFIGURACIÓN DE GRUPOS DE CABECERAS (SUPERIORES)
-const headerGroups = [
+const headerGroups = ref([
   { label: 'Información de la Tarea', colspan: 5 },
   { label: 'Lunes', colspan: 2 },
   { label: 'Martes', colspan: 2 },
@@ -57,7 +57,7 @@ const headerGroups = [
   { label: 'Viernes', colspan: 2 },
   { label: 'Sábado', colspan: 2 },
   { label: 'Domingo', colspan: 2 }
-];
+]);
 
 // CONFIGURACIÓN DE COLUMNAS
 const headers = [
@@ -88,6 +88,56 @@ const cargarDatos = async () => {
     // Extraemos las listas del nuevo formato de respuesta
     const tasksData = res.data.tasks || res.data;
     const calendarData = res.data.calendar || [];
+
+    // --- MAPEO DINÁMICO DE FECHAS A LA CABECERA ---
+    const mapDiasFechas = {};
+    tasksData.forEach(t => {
+      if (t.dia_semana && (t.date || t.fecha)) mapDiasFechas[t.dia_semana] = t.date || t.fecha;
+    });
+    calendarData.forEach(c => {
+      if (c.dia_semana && (c.date || c.fecha)) mapDiasFechas[c.dia_semana] = c.date || c.fecha;
+    });
+
+    // Inferir fechas faltantes usando un día base (por si la BD no envía tareas algún día)
+    let fechaBaseStr = null;
+    let indexBase = -1;
+    for (let i = 0; i < diasSemana.length; i++) {
+      if (mapDiasFechas[diasSemana[i]]) {
+        fechaBaseStr = mapDiasFechas[diasSemana[i]];
+        indexBase = i;
+        break;
+      }
+    }
+
+    if (fechaBaseStr && indexBase !== -1) {
+      const [year, month, day] = fechaBaseStr.split('-').map(Number);
+      const baseDate = new Date(year, month - 1, day);
+      diasSemana.forEach((dia, index) => {
+        if (!mapDiasFechas[dia]) {
+          const newDate = new Date(baseDate);
+          newDate.setDate(baseDate.getDate() + (index - indexBase));
+          const y = newDate.getFullYear();
+          const m = String(newDate.getMonth() + 1).padStart(2, '0');
+          const d = String(newDate.getDate()).padStart(2, '0');
+          mapDiasFechas[dia] = `${y}-${m}-${d}`;
+        }
+      });
+    }
+
+    // Reconstruir la cabecera dinámica de la semana
+    const newHeaderGroups = [{ label: 'Información de la Tarea', colspan: 5 }];
+    diasSemana.forEach(dia => {
+      const fechaStr = mapDiasFechas[dia];
+      let labelStr = dia;
+      if (fechaStr) {
+        const parts = fechaStr.split('-');
+        if (parts.length === 3) {
+          labelStr = `${dia} ${parts[1]}/${parts[2]}`; // Formato: "Día MM/DD"
+        }
+      }
+      newHeaderGroups.push({ label: labelStr, colspan: 2 });
+    });
+    headerGroups.value = newHeaderGroups;
 
     // Limpiamos el personal antes de procesar
     diasSemana.forEach(dia => {

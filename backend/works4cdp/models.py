@@ -215,7 +215,7 @@ class Assay(models.Model):
     tweight = models.FloatField(null=True, blank=True) # Peso bruto
     dweight = models.FloatField(null=True, blank=True) # Peso seco
     pweight = models.FloatField(null=True, blank=True) # Peso producto final
-    chemical_id = models.IntegerField(null=True, blank=True) # ID o código del químico
+    chemical_id = models.BigIntegerField(null=True, blank=True) # ID o código del químico
     sample = models.ForeignKey(Sample, on_delete=models.CASCADE, null=True, blank=True) # La muestra física
     
     # Más campos flotantes de análisis

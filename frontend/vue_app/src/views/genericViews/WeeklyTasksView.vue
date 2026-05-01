@@ -1,14 +1,17 @@
 <template>
   <div class="weekly-task-container">
     <div class="week-selector-bar">
-      <label>Semana de Operación:</label>
-      <input 
-        type="number" 
-        v-model="semanaActiva" 
-        @change="cargarDatos" 
-        class="week-input"
-      />
-      <span class="info-year">Año: {{ currentYear }}</span>
+      <div class="week-controls">
+        <label>Semana de Operación:</label>
+        <input 
+          type="number" 
+          v-model="semanaActiva" 
+          @change="cargarDatos" 
+          class="week-input"
+        />
+        <span class="info-year">Año: {{ currentYear }}</span>
+      </div>
+      <button @click="exportToExcel" class="export-button">Descargar Excel</button>
     </div>
 
     <ExcelGrid
@@ -31,6 +34,7 @@
 import { ref, onMounted, watch, reactive } from 'vue';
 import { api } from '../../api'; // Ajustado según tu árbol
 import ExcelGrid from '../../components/ExcelGrid.vue'; // Subir dos niveles: genericViews -> views -> src/components
+import * as XLSX from 'xlsx';
 // Importamos la utilidad global para el manejo de las peticiones
 import { useApi } from './useApi';
 
@@ -318,6 +322,103 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
   }
 };
 
+const exportToExcel = () => {
+  const wb = XLSX.utils.book_new();
+  const wsData = [];
+
+  // 1. Fila de Grupos de Encabezado
+  const headerGroupRow = [];
+  headerGroups.value.forEach(g => {
+    headerGroupRow.push(g.label);
+    // Rellenar celdas vacías para el colspan
+    for (let i = 1; i < g.colspan; i++) {
+      headerGroupRow.push("");
+    }
+  });
+  wsData.push(headerGroupRow);
+
+  // 2. Fila de Encabezados
+  wsData.push(headers);
+
+  // 3. Filas de Datos
+  gridData.value.forEach(row => {
+    const newRow = row.map(cell => (typeof cell === 'string' ? cell : cell));
+    wsData.push(newRow);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // 4. Combinar celdas para los grupos de encabezado
+  ws['!merges'] = [];
+  let currentCol = 0;
+  headerGroups.value.forEach(group => {
+    if (group.colspan > 1) {
+      ws['!merges'].push({ s: { r: 0, c: currentCol }, e: { r: 0, c: currentCol + group.colspan - 1 } });
+    }
+    currentCol += group.colspan;
+  });
+
+  // 5. Ancho de Columnas
+  ws['!cols'] = [
+    { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 25 }, { wch: 35 }, // Info Tarea
+    ...Array(14).fill({ wch: 12 }) // Columnas de Días
+  ];
+
+  // 6. Aplicar Estilos
+  gridData.value.forEach((row, rowIndex) => {
+    const excelRowIndex = rowIndex + 2; // +2 por las dos filas de encabezado
+
+    if (row.isSummary) {
+      for (let c = 0; c < row.length; c++) {
+        const cellAddress = XLSX.utils.encode_cell({ r: excelRowIndex, c });
+        if (ws[cellAddress]) {
+          ws[cellAddress].s = { font: { bold: true }, alignment: { wrapText: true, vertical: 'top' } };
+        }
+      }
+      return; // No aplicar más estilos a filas de resumen
+    }
+
+    // Estilos para Turno y Estado
+    for (let i = 0; i < 7; i++) {
+      const turnoCol = 5 + i * 2;
+      const estadoCol = 6 + i * 2;
+
+      const turnoValue = row[turnoCol];
+      const estadoValue = row[estadoCol];
+
+      // Estilo de Turno
+      const turnoCellAddress = XLSX.utils.encode_cell({ r: excelRowIndex, c: turnoCol });
+      if (ws[turnoCellAddress] && turnoValue) {
+        let turnoStyle = { font: { bold: true } };
+        if (turnoValue === 'D') turnoStyle.fill = { fgColor: { rgb: "FFFF00" } }; // Amarillo
+        else if (turnoValue === 'N') turnoStyle.fill = { fgColor: { rgb: "ADD8E6" } }; // Azul claro
+        else if (turnoValue === 'DN') turnoStyle.fill = { fgColor: { rgb: "90EE90" } }; // Verde claro
+        ws[turnoCellAddress].s = turnoStyle;
+      }
+
+      // Estilo de Estado
+      const estadoCellAddress = XLSX.utils.encode_cell({ r: excelRowIndex, c: estadoCol });
+      if (ws[estadoCellAddress] && estadoValue) {
+        let estadoStyle = { font: { bold: true } };
+        if (estadoValue === '1') { // Realizado
+          ws[estadoCellAddress].v = 'R';
+          estadoStyle.fill = { fgColor: { rgb: "C6EFCE" } };
+          estadoStyle.font.color = { rgb: "006100" };
+        } else if (estadoValue === '2') { // Pendiente
+          ws[estadoCellAddress].v = 'P';
+          estadoStyle.fill = { fgColor: { rgb: "FFC7CE" } };
+          estadoStyle.font.color = { rgb: "9C0006" };
+        }
+        ws[estadoCellAddress].s = estadoStyle;
+      }
+    }
+  });
+
+  // 7. Generar y Descargar Archivo
+  XLSX.utils.book_append_sheet(wb, ws, "Planificación Semanal");
+  XLSX.writeFile(wb, `Planificacion_Semana_${semanaActiva.value}_${currentYear.value}.xlsx`);
+};
+
 onMounted(cargarDatos);
 </script>
 
@@ -333,6 +434,11 @@ onMounted(cargarDatos);
   border-bottom: 1px solid #dee2e6;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+}
+.week-controls {
+  display: flex;
+  align-items: center;
   gap: 15px;
 }
 .week-input {
@@ -343,6 +449,18 @@ onMounted(cargarDatos);
 .info-year {
   color: #6c757d;
   font-size: 0.9rem;
+}
+.export-button {
+  padding: 6px 12px;
+  background-color: #198754; /* Verde Bootstrap */
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.export-button:hover {
+  background-color: #157347;
 }
 
 /* Permitir saltos de línea (pre-wrap) en las celdas de resumen dentro del ExcelGrid */

@@ -18,6 +18,9 @@
         <!-- Añade estos enlaces `<router-link>` debajo de las pestañas que ya tienes (Ej: Tareas, Equipos) -->
         <li><router-link to="/users">Usuarios</router-link></li>
         <li><router-link to="/userp">Grupos</router-link></li>
+        <li><router-link to="/monthly-calendar">Calendario Mensual</router-link></li>
+        
+
 
 
     </ul>

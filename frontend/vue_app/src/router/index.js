@@ -82,6 +82,11 @@ const router = createRouter({
             path: '/userp',
             name: 'UserGroups',
             component: () => import('../views/genericViews/UserPsView.vue')
+        },
+        {
+            path: '/monthly-calendar',
+            name: 'MonthlyCalendar',
+            component: () => import('../views/genericViews/MonthlyCalendarView.vue')
         }
 
     ]

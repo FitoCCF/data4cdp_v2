@@ -208,13 +208,34 @@ const handleSave = async (gridRows) => {
   try {
     const promises = gridRows.map(row => {
       const payload = {};
-      colKeys.forEach((key, index) => {
-        let val = row[index];
-        if (val === '') val = null;
-        if (val === 'true') val = true;
-        if (val === 'false') val = false;
-        payload[key] = val;
-      });
+      const numericKeys = [
+                    'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
+                    'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
+                    'tara', 'tweight', 'dweight', 'pweight',
+                    'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
+                ];
+                colKeys.forEach((key, idx) => {
+                    if (key.includes('__')) return; // Saltar columnas readonly
+                    
+                    let val = row[idx];
+                    
+                    if (typeof val === 'string') {
+                        val = val.trim();
+                        if (numericKeys.includes(key) && val.includes(',')) {
+                            val = val.replace(',', '.');
+                        }
+                    }
+
+                    let payloadKey = key;
+                    if (key === 'task') payloadKey = 'task_id';
+                    else if (key === 'usuario') payloadKey = 'usuario_id';
+                    else if (key === 'estado') payloadKey = 'estado_id';
+                    else if (key === 'user') payloadKey = 'user_id';
+                    else if (key === 'group' && colKeys.includes('task')) payloadKey = 'usuario_id';
+                    else if (key === 'group') payloadKey = 'group_id';
+                    
+                    payload[payloadKey] = (val === '' || val === null) ? null : val;
+                });
 
       const id = payload.id;
       if (id && String(id).toLowerCase() !== 'nuevo' && id !== '') {

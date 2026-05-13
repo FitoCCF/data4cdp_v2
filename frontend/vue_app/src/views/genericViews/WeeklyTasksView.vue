@@ -36,7 +36,7 @@ import { api } from '../../api'; // Ajustado según tu árbol
 import ExcelGrid from '../../components/ExcelGrid.vue'; // Subir dos niveles: genericViews -> views -> src/components
 import * as XLSX from 'xlsx';
 // Importamos la utilidad global para el manejo de las peticiones
-import { useApi } from './useApi';
+import { useApi } from '../../composables/useApi';
 
 // ESTADO
 const semanaActiva = ref(3289);

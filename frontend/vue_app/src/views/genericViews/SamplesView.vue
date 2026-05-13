@@ -44,7 +44,7 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importación del cliente API
 import { api } from '../../api';
 // Importación del composable genérico de peticiones HTTP
-import { useApi } from './useApi';
+import { useApi } from '../../composables/useApi';
 
 // --- Configuración de la Tabla ---
 
@@ -217,10 +217,23 @@ const handleSave = async (updatedGrid) => {
       // Mapea cada fila de la matriz a una promesa de petición (PUT o POST)
       const promises = updatedGrid.map(async (row) => {
           const id = row[0];
+          
+          const sanitize = (val) => {
+              if (typeof val === 'string') {
+                  val = val.trim();
+                  // Reemplazar comas por puntos si parece un número
+                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
+                      val = val.replace(',', '.');
+                  }
+              }
+              return (val === '' || val === null) ? null : val;
+          };
+
           const payload = {
-              tag: row[1],
-              name: row[2],
-              equipment: row[3]
+              tag: sanitize(row[1]),
+              name: sanitize(row[2]),
+              equipment: sanitize(row[3]),
+          
           };
 
           if (!payload.equipment) delete payload.equipment;

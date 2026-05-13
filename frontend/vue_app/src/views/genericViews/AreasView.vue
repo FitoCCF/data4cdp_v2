@@ -180,12 +180,25 @@ const handleSave = async (updatedGrid) => {
   try {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
-        const payload = {
-            tag: row[1],
-            name: row[2],
-            description: row[3],
-            plant: row[4] // Aquí irá el ID de la planta seleccionado
-        };
+        
+          const sanitize = (val) => {
+              if (typeof val === 'string') {
+                  val = val.trim();
+                  // Reemplazar comas por puntos si parece un número
+                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
+                      val = val.replace(',', '.');
+                  }
+              }
+              return (val === '' || val === null) ? null : val;
+          };
+
+          const payload = {
+            tag: sanitize(row[1]),
+            name: sanitize(row[2]),
+            description: sanitize(row[3]),
+            plant: sanitize(row[4] // Aquí irá el ID de la planta seleccionado),
+        
+          };
 
         // Validación básica de FK
         if (!payload.plant) delete payload.plant;

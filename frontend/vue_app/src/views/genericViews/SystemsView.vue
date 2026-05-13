@@ -170,11 +170,24 @@ const handleSave = async (updatedGrid) => {
     // Iterar sobre cada fila para determinar si es update o create
     const promises = updatedGrid.map(async (row) => {
         const id = row[0]; // ID está en la primera columna
-        const payload = {
-            tag: row[1],
-            name: row[2],
-            description: row[3]
-        };
+        
+          const sanitize = (val) => {
+              if (typeof val === 'string') {
+                  val = val.trim();
+                  // Reemplazar comas por puntos si parece un número
+                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
+                      val = val.replace(',', '.');
+                  }
+              }
+              return (val === '' || val === null) ? null : val;
+          };
+
+          const payload = {
+            tag: sanitize(row[1]),
+            name: sanitize(row[2]),
+            description: sanitize(row[3]),
+        
+          };
 
         // Si tiene ID válido, es una actualización (PUT)
         if (id && String(id).trim() !== '') {

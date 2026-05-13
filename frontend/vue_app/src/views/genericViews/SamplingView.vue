@@ -244,7 +244,7 @@ import { ref, computed, onMounted } from 'vue';
 // Importa la instancia de API para realizar peticiones HTTP
 import { api } from '../../api';
 // Importamos explícitamente nuestro composable de uso de API
-import { useApi } from './useApi';
+import { useApi } from '../../composables/useApi';
 
 // --- Estado Reactivo ---
 // Almacena la fecha seleccionada por defecto es la fecha actual (ISO string)

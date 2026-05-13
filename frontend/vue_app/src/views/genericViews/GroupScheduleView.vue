@@ -28,7 +28,7 @@ import { ref, onMounted } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue'; 
 import { api } from '../../api';
 // Se importa el composable para estandarizar las conexiones API
-import { useApi } from './useApi';
+import { useApi } from '../../composables/useApi';
 
 const gridColumns = ref([]);
 const gridData = ref([]);

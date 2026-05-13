@@ -85,7 +85,7 @@ import { api } from '../../api';
 // Importación del componente de tabla editable (ExcelGrid)
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importación del composable global que administra estados de carga y error automáticamente
-import { useApi } from './useApi';
+import { useApi } from '../../composables/useApi';
 
 // Desestructuración de variables y funciones útiles proporcionadas por el composable useApi
 const { loading, error, execute } = useApi();

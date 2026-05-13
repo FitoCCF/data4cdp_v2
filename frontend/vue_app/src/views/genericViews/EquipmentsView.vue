@@ -206,13 +206,26 @@ const handleSave = async (updatedGrid) => {
   try {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
-        const payload = {
-            tag: row[1],
-            name: row[2],
-            description: row[3],
-            system: row[4], // ID del sistema seleccionado
-            area: row[5]    // ID del área seleccionada
-        };
+        
+          const sanitize = (val) => {
+              if (typeof val === 'string') {
+                  val = val.trim();
+                  // Reemplazar comas por puntos si parece un número
+                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
+                      val = val.replace(',', '.');
+                  }
+              }
+              return (val === '' || val === null) ? null : val;
+          };
+
+          const payload = {
+            tag: sanitize(row[1]),
+            name: sanitize(row[2]),
+            description: sanitize(row[3]),
+            system: sanitize(row[4], // ID del sistema seleccionado),
+            area: sanitize(row[5]    // ID del área seleccionada),
+        
+          };
 
         // Limpiar FKs vacías para evitar errores de validación
         if (!payload.system) delete payload.system;

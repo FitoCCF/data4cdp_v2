@@ -136,6 +136,8 @@
                 'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
                 'summary-cell': item.row.isSummary
               }"
+              :data-col-index="cIndex"
+              :data-value="cell"
               @mousedown="startSelection(visualIndex, cIndex)"
               @mouseover="updateSelection(visualIndex, cIndex)"
               @focus="setActive(visualIndex, cIndex)"
@@ -557,6 +559,7 @@ const initGrid = () => {
     localGrid.value = props.data.map(row => {
       const newRow = [...row];
       if (row._taskIds) Object.defineProperty(newRow, '_taskIds', { value: { ...row._taskIds }, enumerable: false, writable: true });
+      if (row._taskId !== undefined) Object.defineProperty(newRow, '_taskId', { value: row._taskId, enumerable: false, writable: true });
       if (row.isSummary) Object.defineProperty(newRow, 'isSummary', { value: true, enumerable: false, writable: true });
       return newRow;
     });
@@ -574,6 +577,7 @@ watch(() => props.data, (newData) => {
     localGrid.value = newData.map(row => {
       const newRow = [...row];
       if (row._taskIds) Object.defineProperty(newRow, '_taskIds', { value: { ...row._taskIds }, enumerable: false, writable: true });
+      if (row._taskId !== undefined) Object.defineProperty(newRow, '_taskId', { value: row._taskId, enumerable: false, writable: true });
       if (row.isSummary) Object.defineProperty(newRow, 'isSummary', { value: true, enumerable: false, writable: true });
       return newRow;
     });

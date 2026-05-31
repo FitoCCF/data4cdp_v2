@@ -38,9 +38,31 @@ import * as XLSX from 'xlsx';
 // Importamos la utilidad global para el manejo de las peticiones
 import { useApi } from '../../composables/useApi';
 
+// --- LÓGICA DE NEGOCIO Y CÁLCULO DE SEMANA EXTENDIDA ---
+const getExtendedWeek = (date) => {
+  const target = new Date(date.valueOf());
+  const dayNr = (date.getDay() + 6) % 7;
+  target.setDate(target.getDate() - dayNr + 3);
+  const firstThursday = target.valueOf();
+  target.setMonth(0, 1);
+  if (target.getDay() !== 4) {
+    target.setMonth(0, 1 + ((4 - target.getDay()) + 7) % 7);
+  }
+  const isoWeek = 1 + Math.ceil((firstThursday - target) / 604800000);
+  const isoYear = target.getFullYear();
+  const yearsSince1963 = isoYear - 1963;
+  const accumulatedWeeks = yearsSince1963 * 52;
+  return isoWeek + 6 + accumulatedWeeks;
+};
+
+// ESTADO INICIAL BASADO EN LA FECHA ACTUAL
+const today = new Date();
+const initialWeek = getExtendedWeek(today);
+const initialYear = today.getFullYear();
+
 // ESTADO
-const semanaActiva = ref(3289);
-const currentYear = ref(2026);
+const semanaActiva = ref(initialWeek);
+const currentYear = ref(initialYear);
 const gridData = ref([]);
 const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
 
@@ -87,6 +109,8 @@ const dashboardConfig = {
 const cargarDatos = async () => {
   // Envolvemos el cuerpo completo en execute para que lance la vista de "Cargando planificación..."
   await execute(async () => {
+    // Calcular dinámicamente el año correspondiente a la semana activa (Fórmula inversa de base 1963)
+    currentYear.value = 1963 + Math.floor((semanaActiva.value - 7) / 52);
     const res = await api.get(`/weekly-tasks/?week=${semanaActiva.value}&year=${currentYear.value}`);
     
     // Extraemos las listas del nuevo formato de respuesta
@@ -312,7 +336,7 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
   try {
     // Envolvemos el guardado masivo para bloquear la UI mientras dure la red
     await execute(async () => {
-      await api.post('/weekly-tasks/bulk-update/', { updates });
+      await api.post('/weekly-tasks/', { updates });
       alert("Cambios guardados con éxito.");
       await cargarDatos();
     });
@@ -487,5 +511,65 @@ onMounted(cargarDatos);
   color: red;
   text-align: center;
   margin-top: 10px;
+}
+
+/* Estilos personalizados para las celdas de Turno y Estado sin alterar ExcelGrid globalmente */
+:deep(.cell:not(.summary-cell)[data-col-index="5"]),
+:deep(.cell:not(.summary-cell)[data-col-index="7"]),
+:deep(.cell:not(.summary-cell)[data-col-index="9"]),
+:deep(.cell:not(.summary-cell)[data-col-index="11"]),
+:deep(.cell:not(.summary-cell)[data-col-index="13"]),
+:deep(.cell:not(.summary-cell)[data-col-index="15"]),
+:deep(.cell:not(.summary-cell)[data-col-index="17"]) {
+  text-align: center;
+}
+
+:deep(.cell:not(.summary-cell)[data-value="D"]) {
+  background-color: #fef08a !important; /* Amarillo */
+  color: #854d0e !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="N"]) {
+  background-color: #dbeafe !important; /* Azul */
+  color: #1e40af !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="DN"]) {
+  background-color: #ccdbe7 !important; /* Verde */
+  color: #065f46 !important;
+  font-weight: bold;
+}
+
+:deep(.cell:not(.summary-cell)[data-col-index="6"]),
+:deep(.cell:not(.summary-cell)[data-col-index="8"]),
+:deep(.cell:not(.summary-cell)[data-col-index="10"]),
+:deep(.cell:not(.summary-cell)[data-col-index="12"]),
+:deep(.cell:not(.summary-cell)[data-col-index="14"]),
+:deep(.cell:not(.summary-cell)[data-col-index="16"]),
+:deep(.cell:not(.summary-cell)[data-col-index="18"]) {
+  text-align: center;
+}
+
+:deep(.cell:not(.summary-cell)[data-value="1"]) {
+  background-color: #c6efce !important; /* Realizado (Verde) */
+  color: #006100 !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="2"]) {
+  background-color: #ffc7ce !important; /* Pendiente (Rojo) */
+  color: #9c0006 !important;
+  font-weight: bold;
+}
+
+/* Permitir que el selector dropdown herede los colores de la celda */
+:deep(.cell:not(.summary-cell) .cell-select) {
+  background-color: transparent !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+  text-align: center;
+  border: none;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
 }
 </style>

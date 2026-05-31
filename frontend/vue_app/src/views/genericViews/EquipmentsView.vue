@@ -222,9 +222,8 @@ const handleSave = async (updatedGrid) => {
             tag: sanitize(row[1]),
             name: sanitize(row[2]),
             description: sanitize(row[3]),
-            system: sanitize(row[4], // ID del sistema seleccionado),
-            area: sanitize(row[5]    // ID del área seleccionada),
-        
+            system: sanitize(row[4]), // ID del sistema seleccionado
+            area: sanitize(row[5]), // ID del área seleccionada
           };
 
         // Limpiar FKs vacías para evitar errores de validación

@@ -189,6 +189,8 @@ class Sample(models.Model):
 
 # Modelo que registra los valores analizados para las muestras en laboratorios (Análisis Químico y Físico)
 class Assay(models.Model):
+    timestamp = models.DateTimeField(null=True, blank=True, db_index=True)
+
     date = models.DateField(null=True, blank=True) # Fecha de ensayo
     time = models.TimeField(null=True, blank=True) # Hora de ensayo
     instance = models.IntegerField(null=True, blank=True) # Contador de iteración del ensayo
@@ -229,8 +231,30 @@ class Assay(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True) # Usuario que capturó los datos
     meta_user = models.CharField(max_length=50, null=True, blank=True) # Metadatos de usuario en texto plano
 
+    def save(self, *args, **kwargs):
+        import datetime
+        from django.utils import timezone
+        if self.date:
+            t = self.time or datetime.time(0, 0)
+            dt = datetime.datetime.combine(self.date, t)
+            # Si Django está configurado con zona horaria, se hace timezone-aware
+            if timezone.is_aware(dt):
+                self.timestamp = dt
+            else:
+                self.timestamp = timezone.make_aware(dt)
+        super().save(*args, **kwargs)
+
     class Meta:
-        ordering = ['-id']
+        # 2. Obligar a Django a ordenar por la dimensión temporal nativa de TimescaleDB
+        ordering = ['-timestamp']
+        
+        # 3. Evitar que 'manage.py makemigrations' intente recrear la pkey tradicional
+        constraints = [
+            models.UniqueConstraint(
+                fields=['id', 'timestamp'], 
+                name='works4cdp_assay_pkey'
+            )
+        ]
 
 # Modelo para ensayos de granulometría (Tamaño de partícula - Particle Size Indicator)
 class AssaysPsi(models.Model):

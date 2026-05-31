@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import { api } from '../../api';
+import { api } from '../api';
 
 /**
  * Composable para encapsular la lógica de jerarquía de equipos (Planta -> Área -> Sistema -> Equipo).

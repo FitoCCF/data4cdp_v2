@@ -47,26 +47,23 @@
       </div>
     </div>
 
-    <!-- Separador visual entre el calendario y la tabla de tareas -->
-    <hr class="divider" />
-
-    <!-- Sección inferior: Tabla de tareas del día seleccionado -->
-    <div v-if="selectedDate" class="daily-tasks-section">
-      <!-- Título dinámico mostrando el día seleccionado -->
-      <h3>Tareas para el día: {{ selectedDate }}</h3>
-      
-      <!-- Componente ExcelGrid reutilizado para mostrar y editar las tareas diarias -->
-      <ExcelGrid
-        :title="'Planificación Diaria'"
-        :headers="headers"
-        :data="gridData"
-        :columnsConfig="dashboardConfig"
-        @save="handleSaveFromGrid"
-      />
-    </div>
-    <!-- Mensaje alternativo si no se ha seleccionado ningún día -->
-    <div v-else class="no-selection-msg">
-      <p>Haz clic en un día del calendario para ver sus tareas.</p>
+    <!-- Modal: Detalle de Tareas Diarias -->
+    <div v-if="selectedDate" class="modal-overlay" @click.self="closeModal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Tareas para el día: {{ selectedDate }}</h3>
+          <button @click="closeModal" class="close-btn" title="Cerrar modal">&times;</button>
+        </div>
+        <div class="modal-body">
+          <ExcelGrid
+            :title="'Planificación Diaria'"
+            :headers="headers"
+            :data="gridData"
+            :columnsConfig="dashboardConfig"
+            @save="handleSaveFromGrid"
+          />
+        </div>
+      </div>
     </div>
 
     <!-- Superposición (Overlay) que indica que el sistema está cargando datos de la red -->
@@ -440,7 +437,7 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
     // Se envuelve la petición POST en el ejecutor global
     await execute(async () => {
       // Ejecuta la petición hacia la vista masiva (bulk update) del servidor
-      await api.post('/weekly-tasks/bulk-update/', { updates });
+      await api.post('/weekly-tasks/', { updates });
       // Notifica al usuario de la confirmación
       alert("Cambios diarios guardados con éxito.");
       
@@ -452,6 +449,11 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
     // Si fracasa de todos modos se emite alerta local
     alert("Error al sincronizar con el servidor.");
   }
+};
+
+const closeModal = () => {
+  selectedDate.value = null;
+  gridData.value = [];
 };
 </script>
 
@@ -571,46 +573,119 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
   color: white;
 }
 
-/* Separador horizontal */
-.divider {
-  margin: 20px 0;
-  border: none;
-  border-top: 1px solid #dee2e6;
-}
-
-/* Sección donde se ancla la tabla ExcelGrid debajo del calendario */
-.daily-tasks-section {
-  flex-grow: 1; /* Permite estirarse rellenando la pantalla */
-  display: flex;
-  flex-direction: column;
-}
-.daily-tasks-section h3 {
-  margin-bottom: 15px;
-  color: #212529;
-}
-/* Alternativa de mensaje pasivo cuando no hay nada presionado */
-.no-selection-msg {
-  text-align: center;
-  color: #6c757d;
-  font-size: 1.1rem;
-  padding: 40px;
-}
-
 /* Contenedor superpuesto que bloquea la acción durante la red */
 .loading-overlay {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  background: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(3px);
   display: flex;
   justify-content: center;
   align-items: center;
   font-weight: bold;
   font-size: 1.2rem;
-  z-index: 100;
+  z-index: 1100;
 }
+
+/* Estilos para el Modal (Popup) */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  animation: fadeIn 0.25s ease-out;
+}
+
+.modal-content {
+  background: #ffffff;
+  border-radius: 12px;
+  width: 95%;
+  max-width: 1500px;
+  height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #dee2e6;
+  background-color: #f8f9fa;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  color: #212529;
+  font-weight: 600;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.75rem;
+  line-height: 1;
+  color: #6c757d;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-btn:hover {
+  background-color: #e9ecef;
+  color: #212529;
+}
+
+.modal-body {
+  padding: 12px;
+  overflow: hidden;
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #fcfcfc;
+}
+
+/* Forzar que el componente ExcelGrid llene la altura del modal y no cause scroll externo */
+.modal-body :deep(.excel-container) {
+  height: 100% !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Animaciones */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 /* Mensaje de retroalimentación de error */
 .error-message {
   color: red;
@@ -621,5 +696,53 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
 /* Permitir saltos de línea (pre-wrap) en las celdas de resumen dentro del ExcelGrid */
 :deep(.summary-cell) {
   white-space: pre-wrap !important;
+}
+
+/* Estilos personalizados para las celdas de Turno y Estado sin alterar ExcelGrid globalmente */
+:deep(.cell:not(.summary-cell)[data-col-index="5"]) {
+  text-align: center;
+}
+
+:deep(.cell:not(.summary-cell)[data-value="D"]) {
+  background-color: #fef08a !important; /* Amarillo */
+  color: #854d0e !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="N"]) {
+  background-color: #dbeafe !important; /* Azul */
+  color: #1e40af !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="DN"]) {
+  background-color: #ccdbe7 !important; /* Verde */
+  color: #065f46 !important;
+  font-weight: bold;
+}
+
+:deep(.cell:not(.summary-cell)[data-col-index="6"]) {
+  text-align: center;
+}
+
+:deep(.cell:not(.summary-cell)[data-value="1"]) {
+  background-color: #c6efce !important; /* Realizado (Verde) */
+  color: #006100 !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="2"]) {
+  background-color: #ffc7ce !important; /* Pendiente (Rojo) */
+  color: #9c0006 !important;
+  font-weight: bold;
+}
+
+/* Permitir que el selector dropdown herede los colores de la celda */
+:deep(.cell:not(.summary-cell) .cell-select) {
+  background-color: transparent !important;
+  color: inherit !important;
+  font-weight: inherit !important;
+  text-align: center;
+  border: none;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
 }
 </style>

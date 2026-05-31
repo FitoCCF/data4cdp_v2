@@ -196,8 +196,7 @@ const handleSave = async (updatedGrid) => {
             tag: sanitize(row[1]),
             name: sanitize(row[2]),
             description: sanitize(row[3]),
-            plant: sanitize(row[4] // Aquí irá el ID de la planta seleccionado),
-        
+            plant: sanitize(row[4]), // Aquí irá el ID de la planta seleccionado
           };
 
         // Validación básica de FK

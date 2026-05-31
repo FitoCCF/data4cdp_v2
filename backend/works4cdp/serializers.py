@@ -126,6 +126,10 @@ class AssaySerializer(serializers.ModelSerializer):
     sample_id = serializers.PrimaryKeyRelatedField(
         queryset=Sample.objects.all(), source='sample', write_only=True, allow_null=True
     )
+    
+    # Se agrega timestamp como campo de solo lectura para evitar que peticiones PUT/POST intenten escribir
+    # un valor NULL y violen la restricción de base de datos de clave compuesta.
+    timestamp = serializers.DateTimeField(read_only=True)
 
     class Meta:
         model = Assay

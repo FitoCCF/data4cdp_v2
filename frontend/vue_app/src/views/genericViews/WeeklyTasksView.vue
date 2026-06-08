@@ -23,6 +23,89 @@
       @save="handleSaveFromGrid"
     />
 
+    <!-- GRÁFICO COMBINADO SVG (PERSONAL Y ESTADÍSTICA DE ACTIVIDADES) -->
+    <div v-if="chartDataReady && gridData.length > 0" class="chart-section">
+      <h3 class="chart-title">ACTIVIDAD SEMANA {{ semanaActiva }}</h3>
+      <div class="chart-wrapper">
+        <svg viewBox="0 0 1000 450" class="svg-chart" width="100%" height="100%">
+          <!-- Definición de gradientes y sombras -->
+          <defs>
+            <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#3b82f6" />
+              <stop offset="100%" stop-color="#1d4ed8" />
+            </linearGradient>
+            <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+              <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.15" />
+            </filter>
+          </defs>
+
+          <!-- Líneas de cuadrícula horizontales (Líneas de 0 a 6 de personal) -->
+          <line v-for="i in 7" :key="'grid-'+i"
+                x1="80" :y1="380 - (i-1) * 50"
+                x2="900" :y2="380 - (i-1) * 50"
+                stroke="#e5e7eb" stroke-dasharray="4 4" stroke-width="1" />
+
+          <!-- Eje Izquierdo (Cantidad de Personal 0 a 6) -->
+          <g v-for="i in 7" :key="'left-axis-'+i">
+            <text x="50" :y="384 - (i-1) * 50" class="axis-label text-left">{{ i-1 }}</text>
+            <line x1="75" :y1="380 - (i-1) * 50" x2="80" :y2="380 - (i-1) * 50" stroke="#9ca3af" stroke-width="1.5" />
+          </g>
+          <text x="25" y="220" transform="rotate(-90 25 220)" class="axis-title-text" text-anchor="middle">Personal</text>
+
+          <!-- Eje Derecho (Porcentaje de Actividades 0% a 100%) -->
+          <g v-for="i in 6" :key="'right-axis-'+i">
+            <text x="925" :y="384 - (i-1) * 60" class="axis-label text-right">{{ (i-1) * 20 }}%</text>
+            <line x1="900" :y1="380 - (i-1) * 60" x2="905" :y2="380 - (i-1) * 60" stroke="#9ca3af" stroke-width="1.5" />
+          </g>
+          <text x="975" y="220" transform="rotate(90 975 220)" class="axis-title-text" text-anchor="middle">Estadistica Actividad Semanal</text>
+
+          <!-- Línea Base del Eje X -->
+          <line x1="80" y1="380" x2="900" y2="380" stroke="#9ca3af" stroke-width="2" />
+          
+          <!-- Líneas de Eje Y -->
+          <line x1="80" y1="80" x2="80" y2="380" stroke="#9ca3af" stroke-width="1.5" />
+          <line x1="900" y1="80" x2="900" y2="380" stroke="#9ca3af" stroke-width="1.5" />
+
+          <!-- Etiquetas de los Días del Eje X -->
+          <g v-for="(day, idx) in chartDaysShort" :key="'x-label-'+idx">
+            <text :x="135 + idx * 110" y="405" class="day-label" text-anchor="middle">{{ day }}</text>
+          </g>
+
+          <!-- Barras de Personal Activo (Suma Día + Noche) -->
+          <g v-for="(val, idx) in chartPersonnel" :key="'bar-group-'+idx">
+            <rect :x="110 + idx * 110" :y="380 - val * 50"
+                  width="50" :height="val * 50"
+                  fill="url(#barGradient)" rx="4" filter="url(#shadow)" />
+            <!-- Valor en la barra -->
+            <text :x="135 + idx * 110" :y="380 - val * 50 - 8" class="bar-value" text-anchor="middle">{{ val }}</text>
+          </g>
+
+          <!-- Línea del Porcentaje de Actividades -->
+          <path :d="linePathD" fill="none" stroke="#f97316" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+          
+          <!-- Marcadores de Diamante para la línea -->
+          <g v-for="(pct, idx) in chartStats" :key="'dot-group-'+idx">
+            <polygon :points="getDiamondPoints(135 + idx * 110, 380 - pct * 3.0)"
+                     fill="#ffffff" stroke="#f97316" stroke-width="2.5" />
+            <!-- Valor del porcentaje sobre el marcador -->
+            <text :x="135 + idx * 110" :y="380 - pct * 3.0 - 12" class="line-value" text-anchor="middle">{{ pct }}%</text>
+          </g>
+
+          <!-- Leyenda del Gráfico -->
+          <g transform="translate(320, 25)">
+            <!-- Leyenda Personal -->
+            <rect x="0" y="0" width="16" height="12" fill="url(#barGradient)" rx="2" />
+            <text x="25" y="10" class="legend-text">Personal</text>
+
+            <!-- Leyenda Línea -->
+            <line x1="130" y1="6" x2="160" y2="6" stroke="#f97316" stroke-width="3" />
+            <polygon points="145,2 149,6 145,10 141,6" fill="#ffffff" stroke="#f97316" stroke-width="2" />
+            <text x="170" y="10" class="legend-text">Estadistica Actividad Semanal</text>
+          </g>
+        </svg>
+      </div>
+    </div>
+
     <!-- Agregamos el indicador visual de carga apoyado en el composable -->
     <div v-if="loading" class="loading-overlay">Cargando planificación...</div>
     <!-- Agregamos el banner de alerta en caso de fallos nativos de Axios -->
@@ -31,7 +114,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, reactive } from 'vue';
+import { ref, onMounted, watch, reactive, computed } from 'vue';
 import { api } from '../../api'; // Ajustado según tu árbol
 import ExcelGrid from '../../components/ExcelGrid.vue'; // Subir dos niveles: genericViews -> views -> src/components
 import * as XLSX from 'xlsx';
@@ -68,6 +151,13 @@ const diasSemana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sába
 
 // Desestructuramos loading, error y la función ejecutora para nuestra API
 const { loading, error, execute } = useApi();
+
+// VARIABLES PARA EL GRÁFICO COMBINADO SVG
+const chartDataReady = ref(false);
+const chartPersonnel = ref([]);
+const chartStats = ref([]);
+const chartDays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const chartDaysShort = ['LUNES', 'MARTES', 'MIÉRCOLES', 'JUEVES', 'VIERNES', 'SÁBADO', 'DOMINGO'];
 
 // ESTADO PARA EL RESUMEN DE PERSONAL (Usamos Sets para evitar usuarios duplicados en el mismo día)
 const personalDia = reactive({ Lunes: new Set(), Martes: new Set(), Miércoles: new Set(), Jueves: new Set(), Viernes: new Set(), Sábado: new Set(), Domingo: new Set() });
@@ -178,6 +268,7 @@ const cargarDatos = async () => {
     const countTareasNoche = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
     const countTareasAB = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
     const countTareasTotal = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
+    const countTareasCompletadas = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
 
     const mapa = {};
     tasksData.forEach(t => {
@@ -198,6 +289,11 @@ const cargarDatos = async () => {
           countTareasNoche[t.dia_semana]++;
         } else {
           countTareasDia[t.dia_semana]++;
+        }
+
+        // Incrementar si la tarea fue realizada (estado_id = 1)
+        if (String(t.estado_id) === '1') {
+          countTareasCompletadas[t.dia_semana]++;
         }
       }
 
@@ -248,7 +344,9 @@ const cargarDatos = async () => {
     // --- LLENAR ESTADÍSTICAS DE PERSONAL BASADO EN EL CALENDARIO REAL ---
     calendarData.forEach(c => {
       if (c.usuario_nombre) {
-        const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}`.trim();
+        const isOvertime = c.horas_extra && Number(c.horas_extra) > 0;
+        const overtimeSuffix = isOvertime ? ' (Trabajo en Descanso)' : '';
+        const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}${overtimeSuffix}`.trim();
         const strTurno = String(c.turno || '').toUpperCase();
         const dia = c.dia_semana;
         
@@ -271,12 +369,26 @@ const cargarDatos = async () => {
     });
 
     // --- GENERAR FILAS DE ESTADÍSTICAS / RESUMEN EN EL GRID ---
-    const createSummaryRow = (label, dataFn) => {
+    const totalSemanalActividades = Object.values(countTareasTotal).reduce((a, b) => a + b, 0);
+    const totalSemanalCompletadas = Object.values(countTareasCompletadas).reduce((a, b) => a + b, 0);
+    const porcentajeSemanal = totalSemanalActividades > 0 ? Math.round((totalSemanalCompletadas / totalSemanalActividades) * 100) : 0;
+
+    const createSummaryRow = (label, dataFn, useColspan = false) => {
       // Las 5 primeras columnas son de información, dejamos las 4 primeras vacías y usamos la columna "Tarea" (índice 4) para el label.
       const row = ["", "", "", "", label];
       diasSemana.forEach(dia => {
-        row.push(dataFn(dia)); // Se coloca en la celda del Turno
-        row.push("");          // Se deja vacía la celda del Estado
+        const val = dataFn(dia);
+        if (useColspan) {
+          if (typeof val === 'object' && val !== null) {
+            row.push(val);
+          } else {
+            row.push({ value: val, colspan: 2 }); // Celda de origen que ocupa 2 columnas
+          }
+          row.push(null);                      // Celda omitida por la combinación
+        } else {
+          row.push(val);
+          row.push("");
+        }
       });
       Object.defineProperty(row, 'isSummary', { value: true, enumerable: false, writable: true });
       Object.defineProperty(row, '_taskIds', { value: {}, enumerable: false, writable: true });
@@ -287,12 +399,29 @@ const cargarDatos = async () => {
     const rowActDia = createSummaryRow("Actividades de Día", dia => countTareasDia[dia]);
     const rowActNoche = createSummaryRow("Actividades de Noche", dia => countTareasNoche[dia]);
     const rowActAB = createSummaryRow("Actividades Turno AB", dia => countTareasAB[dia]);
-    const rowActTotal = createSummaryRow("Total de Actividades", dia => countTareasTotal[dia]);
+    const rowActTotal = createSummaryRow(`Cantidad de Actividades Diarias (Total: ${totalSemanalActividades})`, dia => countTareasTotal[dia]);
+    const rowActCompleted = createSummaryRow(`Actividades Completadas (Total: ${totalSemanalCompletadas})`, dia => countTareasCompletadas[dia]);
+    const rowActStats = createSummaryRow(`Estadística de Actividades (Global: ${porcentajeSemanal}%)`, dia => {
+      const total = countTareasTotal[dia];
+      const completed = countTareasCompletadas[dia];
+      return total > 0 ? Math.round((completed / total) * 100) + "%" : "0%";
+    });
     
-    const countDiaRow = createSummaryRow("Cant. Personal Día", dia => personalDia[dia].size || 0);
-    const namesDiaRow = createSummaryRow("Nombres Personal Día", dia => Array.from(personalDia[dia]).join('\n') || '-');
-    const countNocheRow = createSummaryRow("Cant. Personal Noche", dia => personalNoche[dia].size || 0);
-    const namesNocheRow = createSummaryRow("Nombres Personal Noche", dia => Array.from(personalNoche[dia]).join('\n') || '-');
+    const countDiaRow = createSummaryRow("Personal Turno Día", dia => {
+      const namesList = Array.from(personalDia[dia]).join('\n');
+      const count = personalDia[dia].size;
+      const hasOvertime = Array.from(personalDia[dia]).some(name => name.includes('(Trabajo en Descanso)'));
+      return { value: count, tooltip: namesList || 'Sin personal asignado', hasOvertime, colspan: 2 };
+    }, true);
+    
+    const countNocheRow = createSummaryRow("Personal Turno Noche", dia => {
+      const namesList = Array.from(personalNoche[dia]).join('\n');
+      const count = personalNoche[dia].size;
+      const hasOvertime = Array.from(personalNoche[dia]).some(name => name.includes('(Trabajo en Descanso)'));
+      return { value: count, tooltip: namesList || 'Sin personal asignado', hasOvertime, colspan: 2 };
+    }, true);
+
+    const rowTotalPersonal = createSummaryRow("Total Personal", dia => personalDia[dia].size + personalNoche[dia].size, true);
 
     newData.push(
       emptyRow, 
@@ -300,15 +429,40 @@ const cargarDatos = async () => {
       rowActNoche, 
       rowActAB, 
       rowActTotal, 
+      rowActCompleted,
+      rowActStats,
       countDiaRow, 
-      namesDiaRow, 
-      countNocheRow, 
-      namesNocheRow
+      countNocheRow,
+      rowTotalPersonal
     );
+
+    // Cargar los datos para el gráfico combinado SVG
+    chartPersonnel.value = diasSemana.map(dia => personalDia[dia].size + personalNoche[dia].size);
+    chartStats.value = diasSemana.map(dia => {
+      const total = countTareasTotal[dia];
+      const completed = countTareasCompletadas[dia];
+      return total > 0 ? Math.round((completed / total) * 100) : 0;
+    });
+    chartDataReady.value = true;
 
     gridData.value = newData;
   // Registramos un string para que actualice la variable 'error.value' nativamente si cae
   }, 'Error al cargar Weekly Tasks desde el servidor.');
+};
+
+// PROPIEDADES COMPUTADAS Y MÉTODOS PARA EL TRAZADO DEL GRÁFICO SVG
+const linePathD = computed(() => {
+  if (chartStats.value.length === 0) return '';
+  return chartStats.value.map((pct, idx) => {
+    const x = 135 + idx * 110;
+    const y = 380 - pct * 3.0; // Escalado de 0% a 100% (y = 380 a y = 80)
+    return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`;
+  }).join(' ');
+});
+
+const getDiamondPoints = (x, y) => {
+  const size = 5;
+  return `${x},${y - size} ${x + size},${y} ${x},${y + size} ${x - size},${y}`;
 };
 
 // GUARDADO DESDE EL COMPONENTE GENÉRICO
@@ -571,5 +725,81 @@ onMounted(cargarDatos);
   width: 100%;
   height: 100%;
   cursor: pointer;
+}
+
+/* --- ESTILOS DEL GRÁFICO COMBINADO SVG --- */
+.chart-section {
+  margin-top: 30px;
+  margin-bottom: 20px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+.chart-title {
+  margin: 0 0 20px 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1f2937;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid #3b82f6;
+  display: inline-block;
+  padding-bottom: 4px;
+}
+
+.chart-wrapper {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.svg-chart {
+  display: block;
+}
+
+.axis-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  fill: #6b7280;
+  font-weight: 500;
+}
+
+.axis-title-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  fill: #374151;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+}
+
+.day-label {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  fill: #4b5563;
+  font-weight: 600;
+}
+
+.bar-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  fill: #1d4ed8;
+  font-weight: 700;
+}
+
+.line-value {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  fill: #ea580c;
+  font-weight: 700;
+}
+
+.legend-text {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  fill: #4b5563;
+  font-weight: 600;
 }
 </style>

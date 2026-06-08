@@ -37,8 +37,8 @@
             <span 
               v-for="(sticker, idx) in initialsMap[dayObj.dateStr]" 
               :key="idx" 
-              :class="['personnel-sticker', 'sticker-' + sticker.type]"
-              :title="'Personal asignado: ' + sticker.text"
+              :class="['personnel-sticker', 'sticker-' + sticker.type, { 'sticker-overtime': sticker.overtime > 0 }]"
+              :title="'Personal asignado: ' + (sticker.fullName || sticker.text) + (sticker.overtime > 0 ? ' (Trabajo en Descanso)' : '')"
             >
               {{ sticker.text }}
             </span>
@@ -253,20 +253,38 @@ const initialsMap = computed(() => {
       if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) shiftType = 'N';
       else if (strTurno === 'AB' || strTurno === 'DN') shiftType = 'DN';
       
+      const hasOvertime = c.horas_extra && Number(c.horas_extra) > 0;
+      const overtimeHours = hasOvertime ? Number(c.horas_extra) : 0;
+      const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}`.trim();
+      
       if (map[dateStr].has(initial)) {
-        const existingType = map[dateStr].get(initial);
-        // Si el usuario ya estaba registrado en ese día pero con otro turno, se combina a 'DN' (Ambos)
-        if (existingType !== shiftType && existingType !== 'DN') map[dateStr].set(initial, 'DN');
+        const existing = map[dateStr].get(initial);
+        let newType = existing.type;
+        if (existing.type !== shiftType && existing.type !== 'DN') newType = 'DN';
+        map[dateStr].set(initial, {
+          type: newType,
+          overtime: existing.overtime + overtimeHours,
+          fullName: existing.fullName
+        });
       } else {
-        map[dateStr].set(initial, shiftType);
+        map[dateStr].set(initial, {
+          type: shiftType,
+          overtime: overtimeHours,
+          fullName: fullName
+        });
       }
     }
   });
   
-  // Convertir los sets a un Array plano para la vista (v-for)
+  // Convertir los maps a un Array plano para la vista (v-for)
   const finalMap = {};
   for (const [date, personnelMap] of Object.entries(map)) {
-    finalMap[date] = Array.from(personnelMap.entries()).map(([text, type]) => ({ text, type }));
+    finalMap[date] = Array.from(personnelMap.entries()).map(([text, data]) => ({
+      text,
+      type: data.type,
+      overtime: data.overtime,
+      fullName: data.fullName
+    }));
   }
   return finalMap;
 });
@@ -359,7 +377,9 @@ const handleSelectDay = async (dayObj) => {
     const dailyCalendar = calendarData.filter(c => (c.date || c.fecha) === dayObj.dateStr);
     dailyCalendar.forEach(c => {
       if (c.usuario_nombre) {
-        const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}`.trim();
+        const isOvertime = c.horas_extra && Number(c.horas_extra) > 0;
+        const overtimeText = isOvertime ? ' (Trabajo en Descanso)' : '';
+        const fullName = `${c.usuario_nombre} ${c.usuario_apellido || ''}${overtimeText}`.trim();
         const strTurno = String(c.turno || '').toUpperCase();
         
         // Si el calendario marca descanso 'X', ignoramos a la persona ese día
@@ -381,9 +401,11 @@ const handleSelectDay = async (dayObj) => {
     });
 
     // --- GENERAR FILAS DE RESUMEN ---
-    const createSummaryRow = (label, value) => {
+    const createSummaryRow = (label, value, useColspan = false) => {
       // Dejamos las primeras 4 columnas en blanco, usamos 'Tarea' para el label y 'Turno' para el valor
-      const row = ["", "", "", "", label, String(value), ""];
+      const cellVal = useColspan ? { value: String(value), colspan: 2 } : String(value);
+      const lastCell = useColspan ? null : "";
+      const row = ["", "", "", "", label, cellVal, lastCell];
       Object.defineProperty(row, 'isSummary', { value: true, enumerable: false, writable: true });
       Object.defineProperty(row, '_taskId', { value: null, enumerable: false, writable: true });
       return row;
@@ -398,9 +420,9 @@ const handleSelectDay = async (dayObj) => {
       createSummaryRow("Actividades Turno AB", countAB),
       createSummaryRow("Total de Actividades", countTotal),
       createSummaryRow("Cant. Personal Día", personalDia.size),
-      createSummaryRow("Nombres Personal Día", Array.from(personalDia).join('\n') || '-'),
+      createSummaryRow("Nombres Personal Día", Array.from(personalDia).join('\n') || '-', true),
       createSummaryRow("Cant. Personal Noche", personalNoche.size),
-      createSummaryRow("Nombres Personal Noche", Array.from(personalNoche).join('\n') || '-')
+      createSummaryRow("Nombres Personal Noche", Array.from(personalNoche).join('\n') || '-', true)
     );
 
     gridData.value = newData;
@@ -744,5 +766,26 @@ const closeModal = () => {
   width: 100%;
   height: 100%;
   cursor: pointer;
+}
+
+.sticker-D.sticker-overtime {
+  background-color: #fef08a !important; /* Amarillo */
+  color: #dc2626 !important; /* Texto rojo */
+  font-weight: bold !important;
+  border: 1.5px solid #dc2626 !important;
+}
+
+.sticker-N.sticker-overtime {
+  background-color: #dbeafe !important; /* Azul */
+  color: #dc2626 !important; /* Texto rojo */
+  font-weight: bold !important;
+  border: 1.5px solid #dc2626 !important;
+}
+
+.sticker-DN.sticker-overtime {
+  background-color: #ccdbe7 !important; /* Combinado */
+  color: #dc2626 !important; /* Texto rojo */
+  font-weight: bold !important;
+  border: 1.5px solid #dc2626 !important;
 }
 </style>

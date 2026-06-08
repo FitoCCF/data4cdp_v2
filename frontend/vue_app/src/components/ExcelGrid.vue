@@ -126,53 +126,59 @@
             </td>
 
             <!-- Celdas de datos -->
-            <td
-              v-for="(cell, cIndex) in item.row"
-              :key="cIndex"
-              class="cell"
-              :class="{
-                'active': activeCell.r === visualIndex && activeCell.c === cIndex,
-                'selected': isSelected(visualIndex, cIndex),
-                'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
-                'summary-cell': item.row.isSummary
-              }"
-              :data-col-index="cIndex"
-              :data-value="cell"
-              @mousedown="startSelection(visualIndex, cIndex)"
-              @mouseover="updateSelection(visualIndex, cIndex)"
-              @focus="setActive(visualIndex, cIndex)"
-              @paste.prevent="handlePaste($event, item.originalIndex, cIndex)"
-              @keydown="handleKeydown($event, visualIndex, cIndex)"
-              @copy="handleCopy"
+            <!-- Celdas de datos (Iteradas usando template para soportar combinaciones en filas de resumen) -->
+            <template v-for="(cell, cIndex) in item.row" :key="cIndex">
+              <td
+                v-if="!(item.row.isSummary && cell === null)"
+                class="cell"
+                :class="{
+                  'active': activeCell.r === visualIndex && activeCell.c === cIndex,
+                  'selected': isSelected(visualIndex, cIndex),
+                  'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
+                  'summary-cell': item.row.isSummary
+                }"
+                :title="typeof cell === 'object' && cell !== null ? (cell.tooltip || '') : ''"
+                :data-col-index="cIndex"
+                :data-value="typeof cell === 'object' && cell !== null ? cell.value : cell"
+                :colspan="item.row.isSummary && typeof cell === 'object' && cell !== null ? (cell.colspan || 1) : 1"
+                :rowspan="item.row.isSummary && typeof cell === 'object' && cell !== null ? (cell.rowspan || 1) : 1"
+                @mousedown="startSelection(visualIndex, cIndex)"
+                @mouseover="updateSelection(visualIndex, cIndex)"
+                @focus="setActive(visualIndex, cIndex)"
+                @paste.prevent="handlePaste($event, item.originalIndex, cIndex)"
+                @keydown="handleKeydown($event, visualIndex, cIndex)"
+                @copy="handleCopy"
 
-              :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !item.row.isSummary"
-              @blur="!isColumnSelect(cIndex) && updateCell($event, item.originalIndex, cIndex)"
-            >
-              <!-- Renderizado Condicional: Select o Texto -->
-              <template v-if="isColumnSelect(cIndex) && !item.row.isSummary">
-                <select
-                  v-if="isEditMode"
-                  :value="cell"
-                  @change="updateCellSelect($event, item.originalIndex, cIndex)"
-                  class="cell-select"
-                  @mousedown.stop
-                >
-                  <option value="">-- Seleccionar --</option>
-                  <option
-                    v-for="opt in getColumnOptions(cIndex)"
-                    :key="opt.value"
-                    :value="opt.value"
+                :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !item.row.isSummary"
+                @blur="!isColumnSelect(cIndex) && updateCell($event, item.originalIndex, cIndex)"
+              >
+                <!-- Renderizado Condicional: Select o Texto -->
+                <template v-if="isColumnSelect(cIndex) && !item.row.isSummary">
+                  <select
+                    v-if="isEditMode"
+                    :value="cell"
+                    @change="updateCellSelect($event, item.originalIndex, cIndex)"
+                    class="cell-select"
+                    @mousedown.stop
                   >
-                    {{ opt.label }}
-                  </option>
-                </select>
-                <span v-else>{{ getOptionLabel(cIndex, cell) }}</span>
-              </template>
+                    <option value="">-- Seleccionar --</option>
+                    <option
+                      v-for="opt in getColumnOptions(cIndex)"
+                      :key="opt.value"
+                      :value="opt.value"
+                    >
+                      {{ opt.label }}
+                    </option>
+                  </select>
+                  <span v-else>{{ getOptionLabel(cIndex, cell) }}</span>
+                </template>
 
-              <template v-else>
-                {{ cell }}
-              </template>
-            </td>
+                <template v-else>
+                  <span v-if="typeof cell === 'object' && cell !== null && cell.hasOvertime" class="overtime-indicator"></span>
+                  {{ typeof cell === 'object' && cell !== null ? cell.value : cell }}
+                </template>
+              </td>
+            </template>
           </tr>
 
           <!-- Mensaje cuando no hay resultados tras filtrar -->
@@ -326,9 +332,13 @@ const tempSelectedValues = ref(new Set());
 
 const resizing = reactive({ active: false, type: null, index: null, startPos: 0, startSize: 0 });
 
-// --- HELPERS BÁSICOS ---
 // Extrae el texto real de forma segura. Asegura que valores como 0 o false no se conviertan en vacíos
-const getCellValueStr = (val) => (val === null || val === undefined) ? '' : String(val);
+// Si el valor es un objeto (usado en celdas combinadas de resumen), se extrae su propiedad 'value'.
+const getCellValueStr = (val) => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'object' && val.value !== undefined) return String(val.value);
+    return String(val);
+};
 
 // --- HELPERS PARA SELECT/DROPDOWN ---
 
@@ -841,5 +851,16 @@ onMounted(() => { initGrid(); });
   background-color: #e5e7eb !important;
   color: #374151;
   font-size: 14px;
+}
+
+.overtime-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0;
+  height: 0;
+  border-top: 8px solid #dc2626; /* Triángulo rojo en la esquina superior izquierda */
+  border-right: 8px solid transparent;
+  z-index: 10;
 }
 </style>

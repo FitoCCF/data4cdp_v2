@@ -119,7 +119,14 @@ class Calendar(models.Model):
 
 # Modelo que representa la Ejecución Programada de una Tarea (Tarea a realizar en una fecha concreta)
 class TaskP(models.Model):
-    task = models.ForeignKey(Task, on_delete=models.CASCADE) # Plantilla base de la tarea de la que hereda
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True) # Plantilla base de la tarea de la que hereda
+    corrective_task = models.ForeignKey(
+        'CorrectiveTask',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="taskp_instances"
+    )
     
     # --- DATOS DE PROGRAMACIÓN ORIGINAL ---
     year = models.IntegerField()              # Año en el que se programó ejecutar
@@ -157,19 +164,14 @@ class TaskGroupAssignment(models.Model):
 
 # Modelo para tareas correctivas imprevistas (fallas, roturas en el momento)
 class CorrectiveTask(models.Model):
-    year = models.IntegerField(null=True, blank=True) # Año de ocurrencia
-    week = models.IntegerField(null=True, blank=True) # Semana de ocurrencia
-    day = models.CharField(max_length=20, null=True, blank=True) # Día de ocurrencia
-    date = models.DateField(null=True, blank=True) # Fecha exacta
+    name = models.CharField(max_length=100, null=True, blank=True) # Nombre corto de la tarea correctiva
     equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE) # Equipo que se rompió/falló
     description = models.TextField() # Descripción del incidente
     creation_date = models.DateField() # Fecha de reporte
-    estado = models.ForeignKey(Estado, on_delete=models.CASCADE) # Estado (ej: En Reparación)
     priority = models.IntegerField() # Nivel de criticidad
     created_by_user = models.ForeignKey(User, on_delete=models.CASCADE) # Quien lo reportó
-    completion_date = models.DateField(null=True, blank=True) # Cuándo se solucionó
     root_cause = models.TextField(null=True, blank=True) # Causa raíz diagnosticada
-    comments = models.TextField(null=True, blank=True) # Notas sobre cómo se reparó
+    turno = models.CharField(max_length=10, null=True, blank=True) # Turno asignado a la tarea correctiva (A, B, C, DN)
 
     class Meta:
         ordering = ['-id']

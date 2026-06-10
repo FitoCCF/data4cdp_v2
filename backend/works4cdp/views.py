@@ -10,8 +10,8 @@ from rest_framework.views import APIView
 # Importaciones adicionales para el filtrado avanzado y el modelo User de Django
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
-from django.db.models import F, Value
-from django.db.models.functions import Concat
+from django.db.models import F, Value, Case, When, BooleanField
+from django.db.models.functions import Concat, Coalesce
 from django.contrib.postgres.aggregates import StringAgg
 from django_filters import rest_framework as django_filters
 
@@ -190,7 +190,7 @@ class TaskPViewSet(viewsets.ModelViewSet):
     }
     
     # Definir campos de ordenamiento
-    ordering_fields = ['id', 'task', 'year', 'week', 'day', 'date', 'usuario', 'estado', 'priority', 'rescheduled']
+    ordering_fields = ['id', 'task', 'year', 'week', 'day', 'date', 'group', 'estado', 'priority', 'rescheduled']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -228,9 +228,14 @@ class CorrectiveTaskViewSet(viewsets.ModelViewSet):
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'description': ['exact', 'in', 'icontains', 'isnull'],
-        'equipment': ['exact', 'in', 'isnull']
+        'equipment': ['exact', 'in', 'isnull'],
+        # Filtros agregados para permitir la adición de tareas correctivas en las vistas semanales y mensuales
+        'year': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'week': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
     }
-    ordering_fields = ['id', 'equipment']
+    ordering_fields = ['id', 'equipment', 'date']
+
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -334,22 +339,29 @@ class WeeklyTaskView(APIView):
         tareas = TaskP.objects.filter(
             week=week, 
             year=year
+        ).annotate(
+            is_corrective=Case(
+                When(corrective_task__isnull=False, then=Value(True)),
+                default=Value(False),
+                output_field=BooleanField()
+            )
         ).values(
             'id', 
             'date',
             'estado_id',
+            'is_corrective',
             anio=F('year'),
             semana=F('week'),
             fecha=F('date'),
             dia_semana=F('day'),
-            planta=F('task__equipment__area__plant__name'),
-            area=F('task__equipment__area__name'),
-            sistema=F('task__equipment__system__name'),
-            tarea_descripcion=F('task__name'),
-            tarea_detalle=F('task__description'),
-            equipo=F('task__equipment__name'),
-            equipo_desc=F('task__equipment__description'),
-            turno=F('task__turn'),
+            planta=Coalesce('task__equipment__area__plant__name', 'corrective_task__equipment__area__plant__name'),
+            area=Coalesce('task__equipment__area__name', 'corrective_task__equipment__area__name'),
+            sistema=Coalesce('task__equipment__system__name', 'corrective_task__equipment__system__name'),
+            tarea_descripcion=Coalesce('task__name', 'corrective_task__name'),
+            tarea_detalle=Coalesce('task__description', 'corrective_task__description'),
+            equipo=Coalesce('task__equipment__name', 'corrective_task__equipment__name'),
+            equipo_desc=Coalesce('task__equipment__description', 'corrective_task__equipment__description'),
+            turno=Coalesce('task__turn', 'corrective_task__turno', Value('C')),
             estado_nombre=F('estado__estado_nombre')
         ).annotate(
             cuadrilla_grupo=StringAgg(
@@ -359,17 +371,11 @@ class WeeklyTaskView(APIView):
             ),
             usuarios_asignados=StringAgg(
                 'taskgroupassignment__calendar__group__user__nombre', 
-                 
-                
-                #Concat(
-                #    'taskgroupassignment__calendar__group__user__nombre', 
-                #    Value(' '), 
-                #    'taskgroupassignment__calendar__group__user__apellido'
                 #), 
                 delimiter=', ', 
                 distinct=True
             )
-        ).order_by('date', 'task__turn')
+        ).order_by('date', 'turno')
 
         # 2. Ejecutamos la consulta SQL nativa del Calendario para las Estadísticas de Personal
         with connection.cursor() as cursor:

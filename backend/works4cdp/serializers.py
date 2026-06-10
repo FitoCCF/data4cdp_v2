@@ -38,6 +38,19 @@ class UserPSerializer(serializers.ModelSerializer):
         model = UserP
         fields = '__all__'
 
+class CorrectiveTaskSerializer(serializers.ModelSerializer):
+    # Campos adicionales para la adición de tareas correctivas en las vistas semanales y mensuales (read_only=True para no interferir en POST/PUT)
+    planta = serializers.CharField(source='equipment.area.plant.name', read_only=True)
+    area = serializers.CharField(source='equipment.area.name', read_only=True)
+    sistema = serializers.CharField(source='equipment.system.name', read_only=True)
+    equipo = serializers.CharField(source='equipment.name', read_only=True)
+    equipo_desc = serializers.CharField(source='equipment.description', read_only=True)
+    tarea_descripcion = serializers.CharField(source='description', read_only=True)
+
+    class Meta:
+        model = CorrectiveTask
+        fields = '__all__'
+
 class TaskPSerializer(serializers.ModelSerializer):
     # En vista STasksViews.vue, el frontend espera que 'task' sea un objeto para ver su nombre (task.name)
     # y en otras partes lo maneja como ID.
@@ -50,13 +63,18 @@ class TaskPSerializer(serializers.ModelSerializer):
     
     task = TaskSerializer(read_only=True)
     task_id = serializers.PrimaryKeyRelatedField(
-        queryset=Task.objects.all(), source='task', write_only=True
+        queryset=Task.objects.all(), source='task', write_only=True, allow_null=True, required=False
     )
     
-    # Lo mismo para UserP y Estado
-    usuario = UserPSerializer(read_only=True)
-    usuario_id = serializers.PrimaryKeyRelatedField(
-        queryset=UserP.objects.all(), source='usuario', write_only=True, allow_null=True
+    corrective_task = CorrectiveTaskSerializer(read_only=True)
+    corrective_task_id = serializers.PrimaryKeyRelatedField(
+        queryset=CorrectiveTask.objects.all(), source='corrective_task', write_only=True, allow_null=True, required=False
+    )
+    
+    # Mapeo a 'group' en el modelo TaskP
+    group = UserPSerializer(read_only=True)
+    group_id = serializers.PrimaryKeyRelatedField(
+        queryset=UserP.objects.all(), source='group', write_only=True, allow_null=True, required=False
     )
     
     estado = EstadoSerializer(read_only=True)
@@ -67,7 +85,7 @@ class TaskPSerializer(serializers.ModelSerializer):
     class Meta:
         model = TaskP
         # 'fields' debe incluir los campos de escritura (_id) explícitamente si usamos '__all__'
-        # pero como estamos redefiniendo 'task', 'usuario', 'estado' que coinciden con los nombres del modelo,
+        # pero como estamos redefiniendo 'task', 'group', 'estado' que coinciden con los nombres del modelo,
         # DRF los usa. Los campos '_id' son adicionales y write_only.
         fields = '__all__'
 
@@ -76,10 +94,6 @@ class UserSerializer(serializers.ModelSerializer):
         model = User
         fields = '__all__'
 
-class CorrectiveTaskSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = CorrectiveTask
-        fields = '__all__'
 
 
 

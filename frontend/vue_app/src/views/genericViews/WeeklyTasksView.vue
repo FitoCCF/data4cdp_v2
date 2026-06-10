@@ -195,52 +195,60 @@ const dashboardConfig = {
   18: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
 };
 
-// CARGA Y TRANSFORMACIÓN
+// Función para calcular los 7 días (Lunes a Domingo) correspondientes a una semana de operación y año específicos.
+// Esto permite consultar tareas correctivas por su rango de fechas reales de ocurrencia.
+const getDatesOfWeek = (semana, anio) => {
+  const isoWeek = semana - 6 - ((anio - 1963) * 52);
+  const simple = new Date(anio, 0, 1 + (isoWeek - 1) * 7);
+  const dow = simple.getDay();
+  const monday = new Date(simple);
+  if (dow <= 4) {
+    monday.setDate(simple.getDate() - (simple.getDay() || 7) + 1);
+  } else {
+    monday.setDate(simple.getDate() + 8 - (simple.getDay() || 7));
+  }
+  
+  const dates = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    dates.push(`${y}-${m}-${day}`);
+  }
+  return dates;
+};
+
 const cargarDatos = async () => {
   // Envolvemos el cuerpo completo en execute para que lance la vista de "Cargando planificación..."
   await execute(async () => {
     // Calcular dinámicamente el año correspondiente a la semana activa (Fórmula inversa de base 1963)
     currentYear.value = 1963 + Math.floor((semanaActiva.value - 7) / 52);
+    
+    // Calcular las fechas exactas de la semana en base a semanaActiva y currentYear
+    const datesOfWeek = getDatesOfWeek(semanaActiva.value, currentYear.value);
+    const startDate = datesOfWeek[0];
+    const endDate = datesOfWeek[6];
+
+    // --- CONSULTAR TAREAS DESDE EL SERVIDOR ---
+    // Consultamos únicamente weekly-tasks, la cual devuelve tanto preventivas como correctivas ya integradas
     const res = await api.get(`/weekly-tasks/?week=${semanaActiva.value}&year=${currentYear.value}`);
     
-    // Extraemos las listas del nuevo formato de respuesta
+    // Extraemos las listas de la respuesta (soportando respuestas paginadas)
     const tasksData = res.data.tasks || res.data;
     const calendarData = res.data.calendar || [];
 
     // --- MAPEO DINÁMICO DE FECHAS A LA CABECERA ---
-    const mapDiasFechas = {};
-    tasksData.forEach(t => {
-      if (t.dia_semana && (t.date || t.fecha)) mapDiasFechas[t.dia_semana] = t.date || t.fecha;
-    });
-    calendarData.forEach(c => {
-      if (c.dia_semana && (c.date || c.fecha)) mapDiasFechas[c.dia_semana] = c.date || c.fecha;
-    });
-
-    // Inferir fechas faltantes usando un día base (por si la BD no envía tareas algún día)
-    let fechaBaseStr = null;
-    let indexBase = -1;
-    for (let i = 0; i < diasSemana.length; i++) {
-      if (mapDiasFechas[diasSemana[i]]) {
-        fechaBaseStr = mapDiasFechas[diasSemana[i]];
-        indexBase = i;
-        break;
-      }
-    }
-
-    if (fechaBaseStr && indexBase !== -1) {
-      const [year, month, day] = fechaBaseStr.split('-').map(Number);
-      const baseDate = new Date(year, month - 1, day);
-      diasSemana.forEach((dia, index) => {
-        if (!mapDiasFechas[dia]) {
-          const newDate = new Date(baseDate);
-          newDate.setDate(baseDate.getDate() + (index - indexBase));
-          const y = newDate.getFullYear();
-          const m = String(newDate.getMonth() + 1).padStart(2, '0');
-          const d = String(newDate.getDate()).padStart(2, '0');
-          mapDiasFechas[dia] = `${y}-${m}-${d}`;
-        }
-      });
-    }
+    const mapDiasFechas = {
+      Lunes: datesOfWeek[0],
+      Martes: datesOfWeek[1],
+      Miércoles: datesOfWeek[2],
+      Jueves: datesOfWeek[3],
+      Viernes: datesOfWeek[4],
+      Sábado: datesOfWeek[5],
+      Domingo: datesOfWeek[6]
+    };
 
     // Reconstruir la cabecera dinámica de la semana
     const newHeaderGroups = [{ label: 'Información de la Tarea', colspan: 5 }];
@@ -270,30 +278,49 @@ const cargarDatos = async () => {
     const countTareasTotal = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
     const countTareasCompletadas = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
 
+    const normalizeDayName = (day) => {
+      if (!day) return '';
+      const d = day.trim().toLowerCase();
+      if (d.startsWith('lun')) return 'Lunes';
+      if (d.startsWith('mar')) return 'Martes';
+      if (d.startsWith('mie') || d.startsWith('mié')) return 'Miércoles';
+      if (d.startsWith('jue')) return 'Jueves';
+      if (d.startsWith('vie')) return 'Viernes';
+      if (d.startsWith('sab') || d.startsWith('sáb')) return 'Sábado';
+      if (d.startsWith('dom')) return 'Domingo';
+      return day;
+    };
+
     const mapa = {};
+
+    // 1. PROCESAR TODAS LAS TAREAS (TaskP que incluye preventivas y correctivas coalescidas)
     tasksData.forEach(t => {
-      // LLAVE BASE: Planta, Área, Sistema, Equipo y Tarea
-      const baseKey = `${t.planta}-${t.area}-${t.sistema}-${t.equipo}-${t.tarea_descripcion}`;
+      // Si es una tarea correctiva, le ponemos el prefijo [C]
+      const tareaDesc = t.is_corrective ? `[C] ${t.tarea_descripcion}` : (t.tarea_descripcion || '');
+      const baseKey = `${t.planta || ''}-${t.area || ''}-${t.sistema || ''}-${t.equipo || ''}-${tareaDesc}`;
       
       if (!mapa[baseKey]) {
         mapa[baseKey] = [];
       }
       
+      // Normalizar el nombre del día para evitar problemas de acentos o mayúsculas
+      const diaSemana = normalizeDayName(t.dia_semana);
+
       // Actualizar contadores de tareas por turno (incluye turno AB)
-      if (t.dia_semana && countTareasTotal[t.dia_semana] !== undefined) {
-        countTareasTotal[t.dia_semana]++;
+      if (diaSemana && countTareasTotal[diaSemana] !== undefined) {
+        countTareasTotal[diaSemana]++;
         const strTurno = String(t.turno || '').toUpperCase();
         if (strTurno === 'AB' || strTurno === 'DN') {
-          countTareasAB[t.dia_semana]++;
+          countTareasAB[diaSemana]++;
         } else if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) {
-          countTareasNoche[t.dia_semana]++;
+          countTareasNoche[diaSemana]++;
         } else {
-          countTareasDia[t.dia_semana]++;
+          countTareasDia[diaSemana]++;
         }
 
         // Incrementar si la tarea fue realizada (estado_id = 1)
         if (String(t.estado_id) === '1') {
-          countTareasCompletadas[t.dia_semana]++;
+          countTareasCompletadas[diaSemana]++;
         }
       }
 
@@ -306,7 +333,7 @@ const cargarDatos = async () => {
         "Sábado": { t: 15, e: 16 }, 
         "Domingo": { t: 17, e: 18 } 
       };
-      const colIndices = indicesDias[t.dia_semana];
+      const colIndices = indicesDias[diaSemana];
       
       if (colIndices) {
         // Transformar visualmente 'A' a 'D' (Día) y 'B' a 'N' (Noche) si viene así de la BD
@@ -315,20 +342,20 @@ const cargarDatos = async () => {
         else if (t.turno === 'B') turnoLabel = 'N';
         else if (t.turno === 'AB') turnoLabel = 'DN';
         
-
         // Buscar una fila existente para esta tarea donde el día esté vacío
         let targetRow = mapa[baseKey].find(row => row[colIndices.e] === "");
 
         // Si no hay fila disponible (ej. porque el mismo día tiene turno Día y Noche), creamos una nueva fila
         if (!targetRow) {
           const equipoDisplay = t.equipo_desc ? `${t.equipo || ""} ${t.equipo_desc}`.trim() : (t.equipo || "");
-          const tareaDisplay = t.tarea_detalle || t.tarea_descripcion || "";
+          const tareaDisplay = t.is_corrective ? tareaDesc : (t.tarea_detalle || t.tarea_descripcion || "");
 
           targetRow = [
             t.planta || "", t.area || "", t.sistema || "", equipoDisplay, tareaDisplay,
             "", "", "", "", "", "", "", "", "", "", "", "", "", ""
           ];
           Object.defineProperty(targetRow, '_taskIds', { value: {}, enumerable: false, writable: true });
+          Object.defineProperty(targetRow, '_isCorrective', { value: t.is_corrective, enumerable: false, writable: true });
           mapa[baseKey].push(targetRow);
         }
 
@@ -467,7 +494,7 @@ const getDiamondPoints = (x, y) => {
 
 // GUARDADO DESDE EL COMPONENTE GENÉRICO
 const handleSaveFromGrid = async (updatedLocalGrid) => {
-  const updates = [];
+  const updatesTaskP = [];
   
   updatedLocalGrid.forEach(fila => {
     if (fila.isSummary) return; // Ignorar las filas de estadísticas al guardar
@@ -477,7 +504,8 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
     for (let i of columnasEstado) {
       const taskId = fila._taskIds?.[i];
       if (taskId) {
-        updates.push({
+        // Todas las tareas (preventivas y correctivas) son ahora instancias de TaskP
+        updatesTaskP.push({
           id: taskId,
           estado_id: fila[i] // El valor actualizado del select en el grid
         });
@@ -485,12 +513,12 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
     }
   });
 
-  if (updates.length === 0) return;
+  if (updatesTaskP.length === 0) return;
 
   try {
     // Envolvemos el guardado masivo para bloquear la UI mientras dure la red
     await execute(async () => {
-      await api.post('/weekly-tasks/', { updates });
+      await api.post('/weekly-tasks/', { updates: updatesTaskP });
       alert("Cambios guardados con éxito.");
       await cargarDatos();
     });

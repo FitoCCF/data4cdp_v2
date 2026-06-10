@@ -56,17 +56,32 @@
       <table class="excel-table" ref="tableRef">
         <thead>
           <!-- FILA DE GRUPOS DE CABECERAS (COLSPAN) -->
-          <tr v-if="headerGroups && headerGroups.length > 0">
-            <th v-if="isEditMode" class="row-header"></th>
-            <th
-              v-for="(group, idx) in headerGroups"
-              :key="'hg-' + idx"
-              :colspan="group.colspan"
-              class="col-header group-header-cell"
-            >
-              {{ group.label }}
-            </th>
-          </tr>
+          <template v-if="headerGroups && headerGroups.length > 0">
+            <template v-if="Array.isArray(headerGroups[0])">
+              <tr v-for="(row, rowIdx) in headerGroups" :key="'hgr-' + rowIdx">
+                <th v-if="isEditMode" class="row-header"></th>
+                <th
+                  v-for="(group, idx) in row"
+                  :key="'hg-' + rowIdx + '-' + idx"
+                  :colspan="group.colspan"
+                  class="col-header group-header-cell"
+                >
+                  {{ group.label }}
+                </th>
+              </tr>
+            </template>
+            <tr v-else>
+              <th v-if="isEditMode" class="row-header"></th>
+              <th
+                v-for="(group, idx) in headerGroups"
+                :key="'hg-' + idx"
+                :colspan="group.colspan"
+                class="col-header group-header-cell"
+              >
+                {{ group.label }}
+              </th>
+            </tr>
+          </template>
           <tr>
             <!-- Encabezado de la columna de índices (SOLO VISIBLE EN MODO EDICIÓN) -->
             <th v-if="isEditMode" class="row-header">#</th>
@@ -76,7 +91,11 @@
               v-for="(col, index) in headers"
               :key="index"
               class="col-header"
-              :style="{ width: colWidths[index] + 'px', minWidth: colWidths[index] + 'px' }"
+              :class="columnsConfig[index]?.headerClass || ''"
+              :style="[
+                { width: colWidths[index] + 'px', minWidth: colWidths[index] + 'px' },
+                columnsConfig[index]?.headerStyle || {}
+              ]"
             >
               <div class="header-content">
                 <!-- Texto del encabezado -->
@@ -802,9 +821,9 @@ onMounted(() => { initGrid(); });
 
 .excel-table { border-collapse: separate; border-spacing: 0; table-layout: fixed; width: max-content; background-color: white; }
 .excel-table th, .excel-table td { border-right: 1px solid #d1d5db; border-bottom: 1px solid #d1d5db; padding: 4px 8px; position: relative; box-sizing: border-box; overflow: hidden; white-space: nowrap; font-size: 14px; }
-.excel-table th { background-color: #f3f4f6; font-weight: 600; text-align: center; user-select: none; position: sticky; top: 0; z-index: 20; border-top: 1px solid #d1d5db; height: 30px; }
+.excel-table th { background-color: #f3f4f6; font-weight: 600; text-align: center; user-select: none; position: sticky; top: 0; z-index: 20; border-top: 1px solid #d1d5db; height: auto; min-height: 30px; }
 .header-content { display: flex; justify-content: space-between; align-items: center; width: 100%; height: 100%; }
-.header-text { flex-grow: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.header-text { flex-grow: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: pre-line; }
 .filter-icon { cursor: pointer; font-size: 10px; padding: 2px 4px; margin-left: 4px; border-radius: 3px; color: #666; }
 .filter-icon:hover { background-color: #e5e7eb; }
 .filter-icon.active { color: #2563eb; font-weight: bold; }

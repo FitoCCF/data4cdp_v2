@@ -323,9 +323,11 @@ const handleSelectDay = async (dayObj) => {
     // Obtiene el año de este día
     const year = dayObj.dateObj.getFullYear();
     
-    // Llama al mismo endpoint utilizado en WeeklyTasksView
+    // --- CONSULTAR TAREAS DESDE EL SERVIDOR ---
+    // Consultamos únicamente weekly-tasks, la cual devuelve tanto preventivas como correctivas ya integradas
     const res = await api.get(`/weekly-tasks/?week=${week}&year=${year}`);
-    // Extrae el array de tareas del objeto devuelto por el servidor
+    
+    // Extrae el array de tareas del objeto devuelto por el servidor (soportando respuestas paginadas)
     const tasksData = res.data.tasks || res.data;
     const calendarData = res.data.calendar || [];
     
@@ -336,7 +338,7 @@ const handleSelectDay = async (dayObj) => {
     let countDia = 0;
     let countNoche = 0;
     let countAB = 0;
-    const countTotal = dailyTasks.length;
+    let countTotal = dailyTasks.length;
     
     // Transforma las tareas obtenidas al formato plano requerido por ExcelGrid
     const mappedTasks = dailyTasks.map(t => {
@@ -348,8 +350,8 @@ const handleSelectDay = async (dayObj) => {
 
       // Se formatea y concatena el equipo junto con su descripción, limpiando espacios si hace falta
       const equipoDisplay = t.equipo_desc ? `${t.equipo || ""} ${t.equipo_desc}`.trim() : (t.equipo || "");
-      // Se prioriza la descripción de tarea_detalle, o en su defecto tarea_descripcion
-      const tareaDisplay = t.tarea_detalle || t.tarea_descripcion || "";
+      // Se prioriza la descripción de tarea_detalle, o en su defecto tarea_descripcion, y prefijamos correctivas con [C]
+      const tareaDisplay = t.is_corrective ? `[C] ${t.tarea_descripcion}` : (t.tarea_detalle || t.tarea_descripcion || "");
       
       // Se transforma la letra de turno de la BD a notación amigable (D, N, DN)
       let turnoLabel = t.turno || '';
@@ -362,9 +364,9 @@ const handleSelectDay = async (dayObj) => {
         t.planta || "", t.area || "", t.sistema || "", equipoDisplay, tareaDisplay, turnoLabel, String(t.estado_id)
       ];
       
-      // Se inyecta una propiedad oculta (no enumerable) para almacenar el ID real de la tarea
-      // Esto es crucial para poder realizar operaciones PUT/POST después sin mostrar el ID en la vista
+      // Se inyecta una propiedad oculta (no enumerable) para almacenar el ID real de la tarea (TaskP ID)
       Object.defineProperty(row, '_taskId', { value: t.id, enumerable: false, writable: true });
+      Object.defineProperty(row, '_isCorrective', { value: t.is_corrective, enumerable: false, writable: true });
       
       // Se retorna la fila completa hacia la grilla
       return row;
@@ -411,6 +413,7 @@ const handleSelectDay = async (dayObj) => {
       return row;
     };
 
+    // Combinar preventivas y correctivas en el grid
     const newData = [...mappedTasks];
     
     newData.push(
@@ -435,7 +438,7 @@ const handleSelectDay = async (dayObj) => {
 // Recibe la matriz entera modificada desde ExcelGrid para su almacenamiento
 const handleSaveFromGrid = async (updatedLocalGrid) => {
   // Array vacío que agrupará los diccionarios de actualización a enviar
-  const updates = [];
+  const updatesTaskP = [];
   
   // Se recorre cada fila de la grilla que fue alterada
   updatedLocalGrid.forEach(fila => {
@@ -445,21 +448,20 @@ const handleSaveFromGrid = async (updatedLocalGrid) => {
     const taskId = fila._taskId;
     // Si existe un ID válido, preparamos el paquete de actualización
     if (taskId) {
-      updates.push({
-        id: taskId, // ID real en base de datos
+      updatesTaskP.push({
+        id: taskId, // ID real en base de datos (TaskP ID)
         estado_id: fila[6] // Valor recogido de la columna de estado (columna 6)
       });
     }
   });
 
   // Previene un envío a la red si por alguna razón no hay información
-  if (updates.length === 0) return;
+  if (updatesTaskP.length === 0) return;
 
   try {
     // Se envuelve la petición POST en el ejecutor global
     await execute(async () => {
-      // Ejecuta la petición hacia la vista masiva (bulk update) del servidor
-      await api.post('/weekly-tasks/', { updates });
+      await api.post('/weekly-tasks/', { updates: updatesTaskP });
       // Notifica al usuario de la confirmación
       alert("Cambios diarios guardados con éxito.");
       

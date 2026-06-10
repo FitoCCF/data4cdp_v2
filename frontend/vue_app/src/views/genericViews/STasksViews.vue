@@ -228,10 +228,8 @@ const handleSave = async (gridRows) => {
 
                     let payloadKey = key;
                     if (key === 'task') payloadKey = 'task_id';
-                    else if (key === 'usuario') payloadKey = 'usuario_id';
                     else if (key === 'estado') payloadKey = 'estado_id';
                     else if (key === 'user') payloadKey = 'user_id';
-                    else if (key === 'group' && colKeys.includes('task')) payloadKey = 'usuario_id';
                     else if (key === 'group') payloadKey = 'group_id';
                     
                     payload[payloadKey] = (val === '' || val === null) ? null : val;

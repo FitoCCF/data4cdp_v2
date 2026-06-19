@@ -43,13 +43,11 @@ const router = createRouter({
             name: 'ScheduledTasks',
             component: () => import('../views/genericViews/STasksViews.vue')
         },
-        /*
         {
             path: '/ctasks',
             name: 'CorrectiveTasks',
             component: () => import('../views/genericViews/CTasksView.vue')
         },
-        */
         {
             path: '/weeklytasks',
             name: 'WeeklyTasks',

@@ -1,7 +1,7 @@
 <template>
     <div class="header">
         
-         <h3>Control de Proceoso Toquepala</h3>
+         <h3>Control de Procesos Toquepala</h3>
     </div>
 </template>
 <script setup>

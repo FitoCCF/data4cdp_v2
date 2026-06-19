@@ -221,20 +221,35 @@ class UserViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in User._meta.fields]
         return Response({'fields': fields})
 
+class CorrectiveTaskFilter(django_filters.FilterSet):
+    # Definimos filtros personalizados para mapear los parámetros obsoletos 'year', 'week' y 'date' a 'creation_date'
+    year = django_filters.NumberFilter(field_name='creation_date', lookup_expr='year')
+    week = django_filters.NumberFilter(field_name='creation_date', lookup_expr='week')
+    date = django_filters.DateFilter(field_name='creation_date')
+
+    class Meta:
+        model = CorrectiveTask
+        # Campos de base para el filtro
+        fields = {
+            'id': ['exact', 'in', 'isnull'],
+            'name': ['exact', 'in', 'icontains', 'isnull'],
+            'description': ['exact', 'in', 'icontains', 'isnull'],
+            'root_cause': ['exact', 'in', 'icontains', 'isnull'],
+            'equipment': ['exact', 'in', 'isnull'],
+            'creation_date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+            'priority': ['exact', 'in', 'isnull'],
+            'created_by_user': ['exact', 'in', 'isnull'],
+            'turno': ['exact', 'in', 'icontains', 'isnull'],
+        }
+
 class CorrectiveTaskViewSet(viewsets.ModelViewSet):
     queryset = CorrectiveTask.objects.all()
     serializer_class = CorrectiveTaskSerializer
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = {
-        'id': ['exact', 'in', 'isnull'],
-        'description': ['exact', 'in', 'icontains', 'isnull'],
-        'equipment': ['exact', 'in', 'isnull'],
-        # Filtros agregados para permitir la adición de tareas correctivas en las vistas semanales y mensuales
-        'year': ['exact', 'in', 'gte', 'lte', 'isnull'],
-        'week': ['exact', 'in', 'gte', 'lte', 'isnull'],
-        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
-    }
-    ordering_fields = ['id', 'equipment', 'date']
+    # Usamos la clase de filtro personalizada en lugar de filterset_fields
+    filterset_class = CorrectiveTaskFilter
+    # Se actualizó 'date' a 'creation_date' ya que el campo original se llama 'creation_date' en el modelo
+    ordering_fields = ['id', 'equipment', 'creation_date']
 
 
     @action(detail=False, methods=['get'], url_path='schema')

@@ -295,9 +295,9 @@ const headers = ['Planta', 'Área', 'Sistema', 'Equipo', 'Tarea', 'Turno', 'Esta
 // Array reactivo que albergará la matriz de celdas a mostrar
 const gridData = ref([]);
 
-// Configuración específica de la columna 'Estado' (índice 6) para que sea un selector P/R
+// Configuración específica de la columna 'Estado' (índice 6) para que sea un selector R/P/D
 const dashboardConfig = {
-  6: { type: 'select', options: [{ label: 'R', value: '1' }, { label: 'P', value: '2' }] }
+  6: { type: 'select', options: [{ label: 'R', value: '1' }, { label: 'P', value: '2' }, { label: 'D', value: '3' }] }
 };
 
 // Vigilar cambios en el calendario para solicitar nueva información automáticamente
@@ -338,15 +338,21 @@ const handleSelectDay = async (dayObj) => {
     let countDia = 0;
     let countNoche = 0;
     let countAB = 0;
-    let countTotal = dailyTasks.length;
+    let countDeshabilitadas = 0;
+    // Excluir tareas deshabilitadas (estado_id = 3) del total principal de actividades
+    let countTotal = dailyTasks.filter(t => String(t.estado_id) !== '3').length;
     
     // Transforma las tareas obtenidas al formato plano requerido por ExcelGrid
     const mappedTasks = dailyTasks.map(t => {
       // Clasificamos para los contadores usando la misma lógica de WeeklyTasksView
-      const strTurno = String(t.turno || '').toUpperCase();
-      if (strTurno === 'AB' || strTurno === 'DN') countAB++;
-      else if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) countNoche++;
-      else countDia++;
+      if (String(t.estado_id) === '3') {
+        countDeshabilitadas++;
+      } else {
+        const strTurno = String(t.turno || '').toUpperCase();
+        if (strTurno === 'AB' || strTurno === 'DN') countAB++;
+        else if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) countNoche++;
+        else countDia++;
+      }
 
       // Se formatea y concatena el equipo junto con su descripción, limpiando espacios si hace falta
       const equipoDisplay = t.equipo_desc ? `${t.equipo || ""} ${t.equipo_desc}`.trim() : (t.equipo || "");
@@ -422,6 +428,7 @@ const handleSelectDay = async (dayObj) => {
       createSummaryRow("Actividades de Noche", countNoche),
       createSummaryRow("Actividades Turno AB", countAB),
       createSummaryRow("Total de Actividades", countTotal),
+      createSummaryRow("Actividades Deshabilitadas", countDeshabilitadas),
       createSummaryRow("Cant. Personal Día", personalDia.size),
       createSummaryRow("Nombres Personal Día", Array.from(personalDia).join('\n') || '-', true),
       createSummaryRow("Cant. Personal Noche", personalNoche.size),
@@ -755,6 +762,11 @@ const closeModal = () => {
 :deep(.cell:not(.summary-cell)[data-value="2"]) {
   background-color: #ffc7ce !important; /* Pendiente (Rojo) */
   color: #9c0006 !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="3"]) {
+  background-color: #e5e7eb !important; /* Deshabilitado (Gris) */
+  color: #4b5563 !important;
   font-weight: bold;
 }
 

@@ -184,15 +184,15 @@ const headers = [
   'Turno', 'Estado'
 ];
 
-// Mapeo para que las celdas de Estado sean selectores P/R
+// Mapeo para que las celdas de Estado sean selectores R/P/D
 const dashboardConfig = {
-  6: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  8: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  10: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  12: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  14: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  16: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
-  18: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}] },
+  6: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  8: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  10: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  12: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  14: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  16: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  18: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
 };
 
 // Función para calcular los 7 días (Lunes a Domingo) correspondientes a una semana de operación y año específicos.
@@ -277,6 +277,8 @@ const cargarDatos = async () => {
     const countTareasAB = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
     const countTareasTotal = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
     const countTareasCompletadas = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
+    // Nuevo objeto para contar las tareas deshabilitadas (estado_id = 3)
+    const countTareasDeshabilitadas = { Lunes: 0, Martes: 0, Miércoles: 0, Jueves: 0, Viernes: 0, Sábado: 0, Domingo: 0 };
 
     const normalizeDayName = (day) => {
       if (!day) return '';
@@ -308,19 +310,24 @@ const cargarDatos = async () => {
 
       // Actualizar contadores de tareas por turno (incluye turno AB)
       if (diaSemana && countTareasTotal[diaSemana] !== undefined) {
-        countTareasTotal[diaSemana]++;
-        const strTurno = String(t.turno || '').toUpperCase();
-        if (strTurno === 'AB' || strTurno === 'DN') {
-          countTareasAB[diaSemana]++;
-        } else if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) {
-          countTareasNoche[diaSemana]++;
+        // Excluir tareas deshabilitadas (estado_id = 3) del conteo general y estadísticas
+        if (String(t.estado_id) === '3') {
+          countTareasDeshabilitadas[diaSemana]++;
         } else {
-          countTareasDia[diaSemana]++;
-        }
+          countTareasTotal[diaSemana]++;
+          const strTurno = String(t.turno || '').toUpperCase();
+          if (strTurno === 'AB' || strTurno === 'DN') {
+            countTareasAB[diaSemana]++;
+          } else if (strTurno === 'N' || strTurno === 'B' || strTurno.includes('NOCHE')) {
+            countTareasNoche[diaSemana]++;
+          } else {
+            countTareasDia[diaSemana]++;
+          }
 
-        // Incrementar si la tarea fue realizada (estado_id = 1)
-        if (String(t.estado_id) === '1') {
-          countTareasCompletadas[diaSemana]++;
+          // Incrementar si la tarea fue realizada (estado_id = 1)
+          if (String(t.estado_id) === '1') {
+            countTareasCompletadas[diaSemana]++;
+          }
         }
       }
 
@@ -398,6 +405,7 @@ const cargarDatos = async () => {
     // --- GENERAR FILAS DE ESTADÍSTICAS / RESUMEN EN EL GRID ---
     const totalSemanalActividades = Object.values(countTareasTotal).reduce((a, b) => a + b, 0);
     const totalSemanalCompletadas = Object.values(countTareasCompletadas).reduce((a, b) => a + b, 0);
+    const totalSemanalDeshabilitadas = Object.values(countTareasDeshabilitadas).reduce((a, b) => a + b, 0);
     const porcentajeSemanal = totalSemanalActividades > 0 ? Math.round((totalSemanalCompletadas / totalSemanalActividades) * 100) : 0;
 
     const createSummaryRow = (label, dataFn, useColspan = false) => {
@@ -428,6 +436,7 @@ const cargarDatos = async () => {
     const rowActAB = createSummaryRow("Actividades Turno AB", dia => countTareasAB[dia]);
     const rowActTotal = createSummaryRow(`Cantidad de Actividades Diarias (Total: ${totalSemanalActividades})`, dia => countTareasTotal[dia]);
     const rowActCompleted = createSummaryRow(`Actividades Completadas (Total: ${totalSemanalCompletadas})`, dia => countTareasCompletadas[dia]);
+    const rowActDeshabilitadas = createSummaryRow(`Actividades Deshabilitadas (Total: ${totalSemanalDeshabilitadas})`, dia => countTareasDeshabilitadas[dia]);
     const rowActStats = createSummaryRow(`Estadística de Actividades (Global: ${porcentajeSemanal}%)`, dia => {
       const total = countTareasTotal[dia];
       const completed = countTareasCompletadas[dia];
@@ -457,6 +466,7 @@ const cargarDatos = async () => {
       rowActAB, 
       rowActTotal, 
       rowActCompleted,
+      rowActDeshabilitadas,
       rowActStats,
       countDiaRow, 
       countNocheRow,
@@ -614,6 +624,10 @@ const exportToExcel = () => {
           ws[estadoCellAddress].v = 'P';
           estadoStyle.fill = { fgColor: { rgb: "FFC7CE" } };
           estadoStyle.font.color = { rgb: "9C0006" };
+        } else if (estadoValue === '3') { // Deshabilitado
+          ws[estadoCellAddress].v = 'D';
+          estadoStyle.fill = { fgColor: { rgb: "E5E7EB" } }; // Gris claro
+          estadoStyle.font.color = { rgb: "4B5563" }; // Gris oscuro
         }
         ws[estadoCellAddress].s = estadoStyle;
       }
@@ -740,6 +754,11 @@ onMounted(cargarDatos);
 :deep(.cell:not(.summary-cell)[data-value="2"]) {
   background-color: #ffc7ce !important; /* Pendiente (Rojo) */
   color: #9c0006 !important;
+  font-weight: bold;
+}
+:deep(.cell:not(.summary-cell)[data-value="3"]) {
+  background-color: #e5e7eb !important; /* Deshabilitado (Gris) */
+  color: #4b5563 !important;
   font-weight: bold;
 }
 

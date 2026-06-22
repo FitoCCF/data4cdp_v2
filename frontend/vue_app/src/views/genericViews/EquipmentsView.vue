@@ -36,6 +36,8 @@
 import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
+// Importamos la función de utilidades compartida para sanitizar valores individuales
+import { sanitizeValue } from '../../utils/gridHelpers';
 
 // Configuración de columnas
 // Índices: 0:ID, 1:Tag, 2:Nombre, 3:Descripción, 4:Sistema, 5:Área
@@ -207,23 +209,13 @@ const handleSave = async (updatedGrid) => {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
         
-          const sanitize = (val) => {
-              if (typeof val === 'string') {
-                  val = val.trim();
-                  // Reemplazar comas por puntos si parece un número
-                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
-                      val = val.replace(',', '.');
-                  }
-              }
-              return (val === '' || val === null) ? null : val;
-          };
-
+          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
-            tag: sanitize(row[1]),
-            name: sanitize(row[2]),
-            description: sanitize(row[3]),
-            system: sanitize(row[4]), // ID del sistema seleccionado
-            area: sanitize(row[5]), // ID del área seleccionada
+            tag: sanitizeValue(row[1]),
+            name: sanitizeValue(row[2]),
+            description: sanitizeValue(row[3]),
+            system: sanitizeValue(row[4]), // ID del sistema seleccionado
+            area: sanitizeValue(row[5]), // ID del área seleccionada
           };
 
         // Limpiar FKs vacías para evitar errores de validación

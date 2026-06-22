@@ -36,6 +36,8 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
 // Importamos el composable global que maneja automáticamente loading y error
 import { useApi } from '../../composables/useApi';
+// Importamos la función de utilidades compartida para construir el payload sanitizado
+import { buildPayloadFromRow } from '../../utils/gridHelpers';
 
 // Definimos los nombres visibles de las columnas (Sin Descripción)
 const headers = ['ID', 'Nombre del Grupo'];
@@ -145,36 +147,8 @@ const handleSave = async (updatedGrid) => {
         await execute(async () => {
             // Iteramos fila por fila y generamos las peticiones correspondientes
             const promises = updatedGrid.map(row => {
-                const payload = {};
-                // Vinculamos de vuelta las celdas a los identificadores del backend
-                const numericKeys = [
-                    'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
-                    'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
-                    'tara', 'tweight', 'dweight', 'pweight',
-                    'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
-                ];
-                colKeys.forEach((key, idx) => {
-                    if (key.includes('__')) return; // Saltar columnas readonly
-                    
-                    let val = row[idx];
-                    
-                    if (typeof val === 'string') {
-                        val = val.trim();
-                        if (numericKeys.includes(key) && val.includes(',')) {
-                            val = val.replace(',', '.');
-                        }
-                    }
-
-                    let payloadKey = key;
-                    if (key === 'task') payloadKey = 'task_id';
-                    else if (key === 'usuario') payloadKey = 'usuario_id';
-                    else if (key === 'estado') payloadKey = 'estado_id';
-                    else if (key === 'user') payloadKey = 'user_id';
-                    else if (key === 'group' && colKeys.includes('task')) payloadKey = 'usuario_id';
-                    else if (key === 'group') payloadKey = 'group_id';
-                    
-                    payload[payloadKey] = (val === '' || val === null) ? null : val;
-                });
+                // Vinculamos de vuelta las celdas a los identificadores del backend usando la utilidad compartida
+                const payload = buildPayloadFromRow(row, colKeys);
                 
                 // Extraemos el ID y validamos que sea estrictamente un número
                 const id = payload.id;

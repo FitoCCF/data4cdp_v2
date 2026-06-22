@@ -39,6 +39,8 @@ import { api } from '../../api';
 import { useApi } from '../../composables/useApi';
 // Importamos el composable que encapsula toda la lógica de la jerarquía de equipos
 import { useEquipmentHierarchies } from '../../composables/useEquipmentHierarchies';
+// Importamos la función de utilidades compartida para construir el payload sanitizado
+import { buildPayloadFromRow } from '../../utils/gridHelpers';
 
 // 1. Definimos los nombres visibles de las columnas para el componente de tabla
 const headers = [
@@ -214,36 +216,8 @@ const handleSave = async (updatedGrid) => {
         await execute(async () => {
             // Iteramos sobre las filas recibidas y creamos una Promesa de red para cada una
             const promises = updatedGrid.map(row => {
-                const payload = {};
-                // Emparejamos cada celda editada con el nombre de columna correspondiente que pide el backend
-                const numericKeys = [
-                    'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
-                    'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
-                    'tara', 'tweight', 'dweight', 'pweight',
-                    'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
-                ];
-                colKeys.forEach((key, idx) => {
-                    if (key.includes('__')) return; // Saltar columnas readonly
-                    
-                    let val = row[idx];
-                    
-                    if (typeof val === 'string') {
-                        val = val.trim();
-                        if (numericKeys.includes(key) && val.includes(',')) {
-                            val = val.replace(',', '.');
-                        }
-                    }
-
-                    let payloadKey = key;
-                    if (key === 'task') payloadKey = 'task_id';
-                    else if (key === 'usuario') payloadKey = 'usuario_id';
-                    else if (key === 'estado') payloadKey = 'estado_id';
-                    else if (key === 'user') payloadKey = 'user_id';
-                    else if (key === 'group' && colKeys.includes('task')) payloadKey = 'usuario_id';
-                    else if (key === 'group') payloadKey = 'group_id';
-                    
-                    payload[payloadKey] = (val === '' || val === null) ? null : val;
-                });
+                // Emparejamos cada celda editada con el nombre de columna correspondiente que pide el backend usando la utilidad compartida
+                const payload = buildPayloadFromRow(row, colKeys);
 
                 // Determinamos la existencia basada en un ID válido
                 const id = payload.id;

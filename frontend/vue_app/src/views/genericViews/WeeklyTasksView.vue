@@ -184,15 +184,15 @@ const headers = [
   'Turno', 'Estado'
 ];
 
-// Mapeo para que las celdas de Estado sean selectores R/P/D
+// Mapeo para que las celdas de Estado sean selectores R/P/X
 const dashboardConfig = {
-  6: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  8: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  10: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  12: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  14: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  16: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
-  18: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'D', value: '3'}] },
+  6: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  8: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  10: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  12: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  14: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  16: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
+  18: { type: 'select', options: [{label: 'R', value: '1'}, {label: 'P', value: '2'}, {label: 'X', value: '3'}] },
 };
 
 // Función para calcular los 7 días (Lunes a Domingo) correspondientes a una semana de operación y año específicos.
@@ -297,8 +297,8 @@ const cargarDatos = async () => {
 
     // 1. PROCESAR TODAS LAS TAREAS (TaskP que incluye preventivas y correctivas coalescidas)
     tasksData.forEach(t => {
-      // Si es una tarea correctiva, le ponemos el prefijo [C]
-      const tareaDesc = t.is_corrective ? `[C] ${t.tarea_descripcion}` : (t.tarea_descripcion || '');
+      // Si es una tarea correctiva, le ponemos el prefijo [C] y usamos el detalle (descripción), o en su defecto el nombre
+      const tareaDesc = t.is_corrective ? `[C] ${t.tarea_detalle || t.tarea_descripcion || ''}` : (t.tarea_descripcion || '');
       const baseKey = `${t.planta || ''}-${t.area || ''}-${t.sistema || ''}-${t.equipo || ''}-${tareaDesc}`;
       
       if (!mapa[baseKey]) {
@@ -606,9 +606,14 @@ const exportToExcel = () => {
       const turnoCellAddress = XLSX.utils.encode_cell({ r: excelRowIndex, c: turnoCol });
       if (ws[turnoCellAddress] && turnoValue) {
         let turnoStyle = { font: { bold: true } };
-        if (turnoValue === 'D') turnoStyle.fill = { fgColor: { rgb: "FFFF00" } }; // Amarillo
-        else if (turnoValue === 'N') turnoStyle.fill = { fgColor: { rgb: "ADD8E6" } }; // Azul claro
-        else if (turnoValue === 'DN') turnoStyle.fill = { fgColor: { rgb: "90EE90" } }; // Verde claro
+        if (estadoValue === '3') { // Si el estado está deshabilitado
+          turnoStyle.fill = { fgColor: { rgb: "E5E7EB" } }; // Gris claro
+          turnoStyle.font = { color: { rgb: "4B5563" }, bold: true }; // Gris oscuro
+        } else {
+          if (turnoValue === 'D') turnoStyle.fill = { fgColor: { rgb: "FFFF00" } }; // Amarillo
+          else if (turnoValue === 'N') turnoStyle.fill = { fgColor: { rgb: "ADD8E6" } }; // Azul claro
+          else if (turnoValue === 'DN') turnoStyle.fill = { fgColor: { rgb: "90EE90" } }; // Verde claro
+        }
         ws[turnoCellAddress].s = turnoStyle;
       }
 
@@ -625,7 +630,7 @@ const exportToExcel = () => {
           estadoStyle.fill = { fgColor: { rgb: "FFC7CE" } };
           estadoStyle.font.color = { rgb: "9C0006" };
         } else if (estadoValue === '3') { // Deshabilitado
-          ws[estadoCellAddress].v = 'D';
+          ws[estadoCellAddress].v = 'X';
           estadoStyle.fill = { fgColor: { rgb: "E5E7EB" } }; // Gris claro
           estadoStyle.font.color = { rgb: "4B5563" }; // Gris oscuro
         }
@@ -760,6 +765,18 @@ onMounted(cargarDatos);
   background-color: #e5e7eb !important; /* Deshabilitado (Gris) */
   color: #4b5563 !important;
   font-weight: bold;
+}
+
+/* Colorear la celda de turno de gris si la celda de estado correspondiente está deshabilitada (estado = 3) */
+:deep(tr:has(td[data-col-index="6"][data-value="3"]) td[data-col-index="5"]),
+:deep(tr:has(td[data-col-index="8"][data-value="3"]) td[data-col-index="7"]),
+:deep(tr:has(td[data-col-index="10"][data-value="3"]) td[data-col-index="9"]),
+:deep(tr:has(td[data-col-index="12"][data-value="3"]) td[data-col-index="11"]),
+:deep(tr:has(td[data-col-index="14"][data-value="3"]) td[data-col-index="13"]),
+:deep(tr:has(td[data-col-index="16"][data-value="3"]) td[data-col-index="15"]),
+:deep(tr:has(td[data-col-index="18"][data-value="3"]) td[data-col-index="17"]) {
+  background-color: #e5e7eb !important;
+  color: #4b5563 !important;
 }
 
 /* Permitir que el selector dropdown herede los colores de la celda */

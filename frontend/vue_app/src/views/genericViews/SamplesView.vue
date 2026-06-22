@@ -45,6 +45,8 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
 // Importación del composable genérico de peticiones HTTP
 import { useApi } from '../../composables/useApi';
+// Importamos la función de utilidades compartida para sanitizar valores individuales
+import { sanitizeValue } from '../../utils/gridHelpers';
 
 // --- Configuración de la Tabla ---
 
@@ -218,22 +220,11 @@ const handleSave = async (updatedGrid) => {
       const promises = updatedGrid.map(async (row) => {
           const id = row[0];
           
-          const sanitize = (val) => {
-              if (typeof val === 'string') {
-                  val = val.trim();
-                  // Reemplazar comas por puntos si parece un número
-                  if (val.includes(',') && !isNaN(val.replace(',', '.'))) {
-                      val = val.replace(',', '.');
-                  }
-              }
-              return (val === '' || val === null) ? null : val;
-          };
-
+          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
-              tag: sanitize(row[1]),
-              name: sanitize(row[2]),
-              equipment: sanitize(row[3]),
-          
+              tag: sanitizeValue(row[1]),
+              name: sanitizeValue(row[2]),
+              equipment: sanitizeValue(row[3]),
           };
 
           if (!payload.equipment) delete payload.equipment;

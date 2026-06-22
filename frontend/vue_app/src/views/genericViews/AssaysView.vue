@@ -61,6 +61,8 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
 // Importación explícita del composable useApi
 import { useApi } from '../../composables/useApi';
+// Importamos la función de utilidades compartida para construir el payload sanitizado
+import { buildPayloadFromRow } from '../../utils/gridHelpers';
 
 // ============================================================================
 // 1. CONFIGURACIÓN DE COLUMNAS
@@ -317,29 +319,8 @@ const handleSave = async (updatedGrid) => {
         // Envolvemos exclusivamente las peticiones que impactan la BD
         await execute(async () => {
             const promises = updatedGrid.map(row => {
-                const payload = {};
-                const numericKeys = [
-                    'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
-                    'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
-                    'tara', 'tweight', 'dweight', 'pweight',
-                    'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
-                ];
-                colKeys.forEach((key, index) => {
-                    let val = row[index];
-                    
-                    if (typeof val === 'string') {
-                        val = val.trim();
-                        if (numericKeys.includes(key) && val.includes(',')) {
-                            val = val.replace(',', '.');
-                        }
-                    }
-
-                    let payloadKey = key;
-                    if (key === 'userp') payloadKey = 'user';
-                    else if (key === 'sample') payloadKey = 'sample_id';
-                    
-                    payload[payloadKey] = (val === '' || val === null) ? null : val;
-                });
+                // Reconstruimos el JSON usando la utilidad de sanitización compartida
+                const payload = buildPayloadFromRow(row, colKeys);
 
                 const id = payload.id;
                 if (id && String(id).toLowerCase() !== 'nuevo' && id !== '') {

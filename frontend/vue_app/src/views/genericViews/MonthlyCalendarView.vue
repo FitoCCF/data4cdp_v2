@@ -295,9 +295,9 @@ const headers = ['Planta', 'Área', 'Sistema', 'Equipo', 'Tarea', 'Turno', 'Esta
 // Array reactivo que albergará la matriz de celdas a mostrar
 const gridData = ref([]);
 
-// Configuración específica de la columna 'Estado' (índice 6) para que sea un selector R/P/D
+// Configuración específica de la columna 'Estado' (índice 6) para que sea un selector R/P/X
 const dashboardConfig = {
-  6: { type: 'select', options: [{ label: 'R', value: '1' }, { label: 'P', value: '2' }, { label: 'D', value: '3' }] }
+  6: { type: 'select', options: [{ label: 'R', value: '1' }, { label: 'P', value: '2' }, { label: 'X', value: '3' }] }
 };
 
 // Vigilar cambios en el calendario para solicitar nueva información automáticamente
@@ -357,7 +357,7 @@ const handleSelectDay = async (dayObj) => {
       // Se formatea y concatena el equipo junto con su descripción, limpiando espacios si hace falta
       const equipoDisplay = t.equipo_desc ? `${t.equipo || ""} ${t.equipo_desc}`.trim() : (t.equipo || "");
       // Se prioriza la descripción de tarea_detalle, o en su defecto tarea_descripcion, y prefijamos correctivas con [C]
-      const tareaDisplay = t.is_corrective ? `[C] ${t.tarea_descripcion}` : (t.tarea_detalle || t.tarea_descripcion || "");
+      const tareaDisplay = t.is_corrective ? `[C] ${t.tarea_detalle || t.tarea_descripcion || ""}` : (t.tarea_detalle || t.tarea_descripcion || "");
       
       // Se transforma la letra de turno de la BD a notación amigable (D, N, DN)
       let turnoLabel = t.turno || '';
@@ -768,6 +768,12 @@ const closeModal = () => {
   background-color: #e5e7eb !important; /* Deshabilitado (Gris) */
   color: #4b5563 !important;
   font-weight: bold;
+}
+
+/* Colorear la celda de turno de gris si la celda de estado está deshabilitada (estado = 3) */
+:deep(tr:has(td[data-col-index="6"][data-value="3"]) td[data-col-index="5"]) {
+  background-color: #e5e7eb !important;
+  color: #4b5563 !important;
 }
 
 /* Permitir que el selector dropdown herede los colores de la celda */

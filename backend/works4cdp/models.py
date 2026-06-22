@@ -122,7 +122,7 @@ class TaskP(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, null=True, blank=True) # Plantilla base de la tarea de la que hereda
     corrective_task = models.ForeignKey(
         'CorrectiveTask',
-        on_delete=models.SET_NULL,
+        on_delete=models.CASCADE,
         null=True,
         blank=True,
         related_name="taskp_instances"

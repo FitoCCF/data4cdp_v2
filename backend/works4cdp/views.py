@@ -160,6 +160,13 @@ class TaskPViewSet(viewsets.ModelViewSet):
     queryset = TaskP.objects.all()
     serializer_class = TaskPSerializer
     
+    def get_queryset(self):
+        # Excluir tareas huérfanas que no tienen ni plantilla programada ni correctiva
+        return super().get_queryset().exclude(
+            task__isnull=True,
+            corrective_task__isnull=True
+        )
+    
     # Habilitar filtros y ordenamiento
     filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     
@@ -350,10 +357,13 @@ class WeeklyTaskView(APIView):
         if not week or not year:
              return Response({"error": "Faltan parámetros week y year"}, status=400)
 
-        # Construcción de la consulta avanzada utilizando el ORM de Django
+        # Construcción de la consulta avanzada utilizando el ORM de Django, excluyendo huérfanas (evita celdas vacías en frontend)
         tareas = TaskP.objects.filter(
             week=week, 
             year=year
+        ).exclude(
+            task__isnull=True,
+            corrective_task__isnull=True
         ).annotate(
             is_corrective=Case(
                 When(corrective_task__isnull=False, then=Value(True)),

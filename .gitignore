@@ -4,3 +4,5 @@ database/
 .idea/
 docker-compose.yml
 nodered_frontend/
+**/__pycache__/
+*.pyc

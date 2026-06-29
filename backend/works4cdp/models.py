@@ -50,9 +50,22 @@ class Equipment(models.Model):
     class Meta:
         ordering = ['-id']
 
+# Modelo catálogo para centralizar los nombres únicos y descripciones de las tareas
+class TaskCatalog(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = "Catálogo de Tareas"
+        verbose_name_plural = "Catálogo de Tareas"
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
 # Modelo maestro para definir las pautas o plantillas de Tareas de mantenimiento
 class Task(models.Model):
-    name = models.CharField(max_length=100) # Nombre de la tarea a realizar
+    task_catalog = models.ForeignKey(TaskCatalog, on_delete=models.PROTECT) # Relación con el catálogo de tareas
     duration = models.IntegerField(null=True, blank=True) # Tiempo estimado en horas/minutos, opcional
     workers = models.IntegerField(null=True, blank=True) # Cantidad de trabajadores requeridos, opcional
     frequency = models.CharField(max_length=50, null=True, blank=True) # Frecuencia con la que se repite (ej: "Mensual")
@@ -165,6 +178,7 @@ class TaskGroupAssignment(models.Model):
 # Modelo para tareas correctivas imprevistas (fallas, roturas en el momento)
 class CorrectiveTask(models.Model):
     name = models.CharField(max_length=100, null=True, blank=True) # Nombre corto de la tarea correctiva
+    task_catalog = models.ForeignKey(TaskCatalog, on_delete=models.SET_NULL, null=True, blank=True) # Clasificación del catálogo si aplica
     equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE) # Equipo que se rompió/falló
     description = models.TextField() # Descripción del incidente
     creation_date = models.DateField() # Fecha de reporte

@@ -19,7 +19,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from works4cdp.views import (
     EstadoViewSet, PlantViewSet, AreaViewSet, SystemViewSet, EquipmentViewSet,
-    TaskViewSet, TaskPViewSet, UserViewSet, CorrectiveTaskViewSet,
+    TaskCatalogViewSet, TaskViewSet, TaskPViewSet, UserViewSet, CorrectiveTaskViewSet,
     SampleViewSet, AssayViewSet, UserPViewSet, WeeklyTaskView, CalendarViewSet
 )
 
@@ -30,6 +30,7 @@ router.register(r'plants', PlantViewSet)
 router.register(r'areas', AreaViewSet)
 router.register(r'systems', SystemViewSet)
 router.register(r'equipments', EquipmentViewSet)
+router.register(r'taskcatalogs', TaskCatalogViewSet)
 router.register(r'tasks', TaskViewSet)
 router.register(r'taskp', TaskPViewSet)
 router.register(r'users', UserViewSet)

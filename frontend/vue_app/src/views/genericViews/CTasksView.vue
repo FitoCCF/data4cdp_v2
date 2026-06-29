@@ -42,7 +42,7 @@ import { useEquipmentHierarchies } from '../../composables/useEquipmentHierarchi
 
 // 1. Definimos los nombres visibles de las columnas para el componente de tabla
 const headers = [
-  'ID', 'Nombre', 'Planta', 'Área', 'Sistema', 'Equipo Asignado', 
+  'ID', 'Categoría de Tarea', 'Nombre Manual', 'Planta', 'Área', 'Sistema', 'Equipo Asignado', 
   'Descripción', 'Causa Raíz', 'Fecha de Reporte', 'Criticidad', 'Reportado por', 'Turno'
 ];
 
@@ -50,7 +50,7 @@ const headers = [
 // Agregamos nombres con doble guión bajo ('__') para las columnas de Planta, Área y Sistema de la jerarquía,
 // las cuales son de solo lectura y sirven únicamente de apoyo para visualización y filtros.
 const colKeys = [
-  'id', 'name', 'equipment__area__plant__name', 'equipment__area__name', 'equipment__system__name', 'equipment',
+  'id', 'task_catalog', 'name', 'equipment__area__plant__name', 'equipment__area__name', 'equipment__system__name', 'equipment',
   'description', 'root_cause', 'creation_date', 'priority', 'created_by_user', 'turno'
 ];
 
@@ -61,6 +61,8 @@ const gridData = ref([]);
 const filterData = ref([]);
 // Almacena la lista de usuarios cargada para el dropdown 'Reportado por'
 const usersList = ref([]);
+// Almacena la lista de tareas del catálogo
+const taskCatalogList = ref([]);
 
 // Extraemos estados globales (loading y error) junto con la función 'execute' para envolver promesas
 const { loading, error, execute } = useApi();
@@ -76,15 +78,33 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 
+// --- Carga del catálogo de tareas ---
+const loadTaskCatalogs = async () => {
+    try {
+        const res = await api.get('taskcatalogs/', { params: { page_size: 10000 } });
+        taskCatalogList.value = res.data.results || res.data || [];
+    } catch (e) {
+        console.error("Error al cargar el catálogo de tareas:", e);
+    }
+};
+
 // --- Configuración Especial para Columnas del Grid ---
 const columnsConfig = computed(() => {
     return {
-        // Configuramos las columnas 2, 3 y 4 (Planta, Área y Sistema) como columnas de solo lectura
-        2: { readOnly: true },
+        // La columna 1 corresponde a 'Categoría de Tarea' (task_catalog)
+        1: {
+            type: 'select',
+            options: taskCatalogList.value.map(cat => ({
+                value: cat.id,
+                label: cat.name || 'Sin nombre'
+            })).sort((a, b) => a.label.localeCompare(b.label))
+        },
+        // Configuramos las columnas 3, 4 y 5 (Planta, Área y Sistema) como columnas de solo lectura (antes 2, 3 y 4)
         3: { readOnly: true },
         4: { readOnly: true },
-        // La columna 5 corresponde a 'Equipo Asignado'
-        5: {
+        5: { readOnly: true },
+        // La columna 6 corresponde a 'Equipo Asignado' (antes 5)
+        6: {
             type: 'select', // Define la celda como un menú desplegable (dropdown)
             // Generamos dinámicamente las opciones del selector cruzando la información de los equipos
             options: equipmentsList.value.map(eq => {
@@ -97,8 +117,8 @@ const columnsConfig = computed(() => {
                 };
             }).sort((a, b) => a.label.localeCompare(b.label)) // Ordenamos alfabéticamente
         },
-        // La columna 10 corresponde a 'Reportado por'
-        10: {
+        // La columna 11 corresponde a 'Reportado por' (antes 10)
+        11: {
             type: 'select', // Define la celda como un menú desplegable
             // Generamos dinámicamente las opciones usando el catálogo de usuarios
             options: usersList.value.map(u => {
@@ -141,6 +161,7 @@ const loadFilterData = async () => {
 
             return [
                 t.id, 
+                t.task_catalog || '', 
                 t.name || '', 
                 plantName, 
                 areaName, 
@@ -165,7 +186,7 @@ const loadData = async (page = 1) => {
         let params = { page, page_size: pageSize.value };
 
         // Usamos el composable para construir los parámetros de filtro, incluyendo la jerarquía de equipos
-        const hierarchyIndexes = { plant: '2', area: '3', system: '4', equipment: '5' };
+        const hierarchyIndexes = { plant: '3', area: '4', system: '5', equipment: '6' };
         params = buildFilterParams(params, currentFilters.value, colKeys, hierarchyIndexes);
 
         // Si hay un ordenamiento, enviamos el comando de DRF pertinente (agregando '-' si es descendente)
@@ -204,6 +225,7 @@ const loadData = async (page = 1) => {
 
             return [
                 t.id, 
+                t.task_catalog || '', 
                 t.name || '', 
                 plantName, 
                 areaName, 
@@ -332,6 +354,8 @@ onMounted(async () => {
     // El orden de ejecución es crítico:
     // 1. Obtener opciones foráneas (Plantas, Áreas, Sistemas, Equipos) de la jerarquía
     await loadDependencies();
+    // 1.5 Cargar catálogo de tareas
+    await loadTaskCatalogs();
     // 2. Obtener lista de usuarios para el selector
     await loadUsers();
     // 3. Traer las tareas correctivas actuales aplicando formato

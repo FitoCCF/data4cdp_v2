@@ -28,7 +28,14 @@ class EquipmentSerializer(serializers.ModelSerializer):
         model = Equipment
         fields = '__all__'
 
+class TaskCatalogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TaskCatalog
+        fields = '__all__'
+
 class TaskSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(source='task_catalog.name', read_only=True)
+
     class Meta:
         model = Task
         fields = '__all__'
@@ -46,6 +53,7 @@ class CorrectiveTaskSerializer(serializers.ModelSerializer):
     equipo = serializers.CharField(source='equipment.name', read_only=True)
     equipo_desc = serializers.CharField(source='equipment.description', read_only=True)
     tarea_descripcion = serializers.CharField(source='description', read_only=True)
+    task_catalog_name = serializers.CharField(source='task_catalog.name', read_only=True)
 
     class Meta:
         model = CorrectiveTask

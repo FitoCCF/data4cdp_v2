@@ -32,6 +32,22 @@ class EstadoViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in Estado._meta.fields]  # Lista de campos del modelo
         return Response({'fields': fields})
 
+class TaskCatalogViewSet(viewsets.ModelViewSet):
+    queryset = TaskCatalog.objects.all()
+    serializer_class = TaskCatalogSerializer
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+    filterset_fields = {
+        'id': ['exact', 'in', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'description': ['exact', 'in', 'icontains', 'isnull']
+    }
+    ordering_fields = ['id', 'name', 'description']
+
+    @action(detail=False, methods=['get'], url_path='schema')
+    def schema(self, request):
+        fields = [field.name for field in TaskCatalog._meta.fields]
+        return Response({'fields': fields})
+
 class PlantViewSet(viewsets.ModelViewSet):
     # Consulta base que obtiene todos los registros del modelo Plant
     queryset = Plant.objects.all()
@@ -137,7 +153,8 @@ class TaskViewSet(viewsets.ModelViewSet):
     # Definir campos de filtrado
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
-        'name': ['exact', 'in', 'icontains', 'isnull'],
+        'task_catalog': ['exact', 'in', 'isnull'],
+        'task_catalog__name': ['exact', 'in', 'icontains', 'isnull'],
         'duration': ['exact', 'in', 'isnull'],
         'workers': ['exact', 'in', 'isnull'],
         'frequency': ['exact', 'in', 'icontains', 'isnull'],
@@ -149,7 +166,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     }
     
     # Definir campos de ordenamiento
-    ordering_fields = ['id', 'name', 'duration', 'workers', 'frequency', 'start_date', 'description', 'procedure', 'turn', 'equipment']
+    ordering_fields = ['id', 'task_catalog__name', 'duration', 'workers', 'frequency', 'start_date', 'description', 'procedure', 'turn', 'equipment']
 
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
@@ -240,6 +257,8 @@ class CorrectiveTaskFilter(django_filters.FilterSet):
         fields = {
             'id': ['exact', 'in', 'isnull'],
             'name': ['exact', 'in', 'icontains', 'isnull'],
+            'task_catalog': ['exact', 'in', 'isnull'],
+            'task_catalog__name': ['exact', 'in', 'icontains', 'isnull'],
             'description': ['exact', 'in', 'icontains', 'isnull'],
             'root_cause': ['exact', 'in', 'icontains', 'isnull'],
             'equipment': ['exact', 'in', 'isnull'],
@@ -382,7 +401,7 @@ class WeeklyTaskView(APIView):
             planta=Coalesce('task__equipment__area__plant__name', 'corrective_task__equipment__area__plant__name'),
             area=Coalesce('task__equipment__area__name', 'corrective_task__equipment__area__name'),
             sistema=Coalesce('task__equipment__system__name', 'corrective_task__equipment__system__name'),
-            tarea_descripcion=Coalesce('task__name', 'corrective_task__name'),
+            tarea_descripcion=Coalesce('task__task_catalog__name', 'corrective_task__task_catalog__name', 'corrective_task__name'),
             tarea_detalle=Coalesce('task__description', 'corrective_task__description'),
             equipo=Coalesce('task__equipment__name', 'corrective_task__equipment__name'),
             equipo_desc=Coalesce('task__equipment__description', 'corrective_task__equipment__description'),

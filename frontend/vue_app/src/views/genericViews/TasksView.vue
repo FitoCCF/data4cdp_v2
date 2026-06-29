@@ -53,7 +53,7 @@ const headers = [
 // lo cual es compatible con los filtros por defecto de Django y nos servirá para ignorarlas
 // a la hora de guardar, ya que esos campos no pertenecen a la tabla Task directamente.
 const colKeys = [
-  'id', 'name', 'duration', 'workers', 'frequency', 
+  'id', 'task_catalog', 'duration', 'workers', 'frequency', 
   'start_date', 'description', 'equipment__area__plant__name', 'equipment__area__name', 'equipment__system__name', 'equipment', 'procedure', 'turn'
 ];
 
@@ -62,6 +62,8 @@ const colKeys = [
 const gridData = ref([]);
 // Almacena los datos completos requeridos por los filtros de ExcelGrid
 const filterData = ref([]);
+// Almacena la lista de tareas del catálogo
+const taskCatalogList = ref([]);
 
 // Extraemos estados globales (loading y error) junto con la función 'execute' para envolver promesas
 const { loading, error, execute } = useApi();
@@ -77,9 +79,27 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 
+// --- Carga del catálogo de tareas ---
+const loadTaskCatalogs = async () => {
+    try {
+        const res = await api.get('taskcatalogs/', { params: { page_size: 10000 } });
+        taskCatalogList.value = res.data.results || res.data || [];
+    } catch (e) {
+        console.error("Error al cargar el catálogo de tareas:", e);
+    }
+};
+
 // --- Configuración Especial para Columnas del Grid ---
 const columnsConfig = computed(() => {
     return {
+        // Configuramos la columna del catálogo como un selector desplegable
+        1: {
+            type: 'select',
+            options: taskCatalogList.value.map(cat => ({
+                value: cat.id,
+                label: cat.name || 'Sin nombre'
+            })).sort((a, b) => a.label.localeCompare(b.label))
+        },
         // Configuramos los índices 7, 8 y 9 (Planta, Área y Sistema) como columnas de solo lectura
         7: { readOnly: true },
         8: { readOnly: true },
@@ -124,7 +144,7 @@ const loadFilterData = async () => {
 
             return [
                 t.id, 
-                t.name || '', 
+                t.task_catalog || '', 
                 t.duration || '', 
                 t.workers || '', 
                 t.frequency || '', 
@@ -187,7 +207,7 @@ const loadData = async (page = 1) => {
 
             return [
                 t.id, 
-                t.name || '', 
+                t.task_catalog || '', 
                 t.duration || '', 
                 t.workers || '', 
                 t.frequency || '', 
@@ -269,6 +289,8 @@ onMounted(async () => {
     // El orden de ejecución es crítico:
     // 1. Obtener opciones foráneas (Plantas, Áreas, Sistemas, Equipos)
     await loadDependencies();
+    // 1.5 Cargar el catálogo de tareas
+    await loadTaskCatalogs();
     // 2. Traer las tareas actuales aplicando formato a la columna de equipos
     await loadData();
     // 3. Rellenar opciones de filtro

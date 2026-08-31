@@ -494,6 +494,29 @@ const exportClbFile = async () => {
     // Cabecera solicitada con columnas separadas por tabulador
     const headersClb = ['Fecha', 'Hora', 'FE', 'CU', 'ZN', 'MO', 'SC', '% Fe', '% Cu', '% Zn', '% Mo', '%Ins', '%Sol'];
 
+    const monthsClb = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const formatClbDate = (dateStr) => {
+      if (!dateStr) return '';
+      const cleanDate = String(dateStr).split('T')[0];
+      const parts = cleanDate.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const monthIndex = parseInt(parts[1], 10) - 1;
+        const day = String(parts[2]).padStart(2, '0');
+        const month = monthsClb[monthIndex] || parts[1];
+        return `${day}/${month}/${year}`;
+      }
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = monthsClb[d.getMonth()];
+        const year = d.getFullYear();
+        return `${day}/${month}/${year}`;
+      }
+      return String(dateStr);
+    };
+
     const formatValue = (val) => {
       if (val === null || val === undefined) return '';
       return String(val);
@@ -509,7 +532,7 @@ const exportClbFile = async () => {
 
     assays.forEach(a => {
       const row = [
-        formatValue(a.date),
+        formatClbDate(a.date),
         formatTimeVal(a.time),
         formatValue(a.n1fe),
         formatValue(a.n2cu),

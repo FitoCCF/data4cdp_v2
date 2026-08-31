@@ -501,18 +501,18 @@ const exportClbFile = async () => {
       const cleanDate = String(dateStr).split('T')[0];
       const parts = cleanDate.split('-');
       if (parts.length === 3) {
-        const year = parts[0];
+        const year2Digits = String(parts[0]).slice(-2);
         const monthIndex = parseInt(parts[1], 10) - 1;
         const day = String(parts[2]).padStart(2, '0');
         const month = monthsClb[monthIndex] || parts[1];
-        return `${day}/${month}/${year}`;
+        return `${day}/${month}/${year2Digits}`;
       }
       const d = new Date(dateStr);
       if (!isNaN(d.getTime())) {
         const day = String(d.getDate()).padStart(2, '0');
         const month = monthsClb[d.getMonth()];
-        const year = d.getFullYear();
-        return `${day}/${month}/${year}`;
+        const year2Digits = String(d.getFullYear()).slice(-2);
+        return `${day}/${month}/${year2Digits}`;
       }
       return String(dateStr);
     };
@@ -554,19 +554,49 @@ const exportClbFile = async () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
 
-    // Nombre descriptivo para el archivo descargado
-    let sampleName = 'todas_muestras';
+    // Helper para formatear fecha a ddmmYY (ej: 050826)
+    const formatDateToDDMMYY = (dateStr) => {
+      if (!dateStr) return '';
+      const clean = String(dateStr).split('T')[0];
+      const parts = clean.split('-');
+      if (parts.length === 3) {
+        const yy = String(parts[0]).slice(-2);
+        const mm = String(parts[1]).padStart(2, '0');
+        const dd = String(parts[2]).padStart(2, '0');
+        return `${dd}${mm}${yy}`;
+      }
+      return dateStr.replace(/[^0-9]/g, '').slice(-6);
+    };
+
+    // Extraer el tag de la muestra (el código antes del guion ej: "C_01_S01 - Rebose..." -> "C_01_S01")
+    let tagDeMuestra = 'MUESTRA';
     if (selectedSampleId.value) {
       const foundSample = samplesList.value.find(s => s.id == selectedSampleId.value);
       if (foundSample) {
-        sampleName = (foundSample.name || foundSample.tag || 'muestra').replace(/\s+/g, '_').toLowerCase();
+        if (foundSample.tag && foundSample.tag.trim()) {
+          // Extraer la parte antes del guion si viene concatenado en tag
+          tagDeMuestra = foundSample.tag.includes(' - ')
+            ? foundSample.tag.split(' - ')[0].trim()
+            : foundSample.tag.trim();
+        } else if (foundSample.name && foundSample.name.trim()) {
+          // Extraer la parte antes del guion de "TAG - Nombre"
+          tagDeMuestra = foundSample.name.includes(' - ')
+            ? foundSample.name.split(' - ')[0].trim()
+            : foundSample.name.trim();
+        }
+        // Reemplazar espacios residuales por guion bajo si los hubiera
+        tagDeMuestra = tagDeMuestra.replace(/\s+/g, '_');
       }
+    } else {
+      tagDeMuestra = 'TODAS';
     }
-    const eqObj = equipmentsList.value.find(e => e.id == selectedEquipmentId.value);
-    const eqName = eqObj ? eqObj.name.replace(/\s+/g, '_').toLowerCase() : 'analizador';
 
+    const startDDMMYY = formatDateToDDMMYY(startDate.value);
+    const endDDMMYY = formatDateToDDMMYY(endDate.value);
+
+    // Formato de nombre: tagdemuestra_ddmmYY_ddmmYY.clb
     link.href = url;
-    link.setAttribute('download', `${eqName}_${sampleName}_${startDate.value}_a_${endDate.value}.clb`);
+    link.setAttribute('download', `${tagDeMuestra}_${startDDMMYY}_${endDDMMYY}.clb`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

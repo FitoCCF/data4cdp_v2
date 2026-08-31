@@ -1,20 +1,69 @@
 <template>
   <div class="assays-view">
-    <!-- Selector de Equipo en la Cabecera -->
+    <!-- Selector de Equipo y Panel de Extracción .clb en la Cabecera -->
     <div class="header-actions">
-      <label for="equipment-select">Filtrar por Analizador:</label>
-      <select
-        id="equipment-select"
-        v-model="selectedEquipmentId"
-        @change="handleEquipmentChange"
-        class="equipment-select"
-        :disabled="loading"
-      >
-        <option :value="null" disabled>-- Seleccione un Analizador --</option>
-        <option v-for="eq in equipmentsList" :key="eq.id" :value="eq.id">
-          {{ eq.name }} {{ eq.description ? `- ${eq.description}` : '' }}
-        </option>
-      </select>
+      <div class="analyzer-group">
+        <label for="equipment-select">Filtrar por Analizador:</label>
+        <select
+          id="equipment-select"
+          v-model="selectedEquipmentId"
+          @change="handleEquipmentChange"
+          class="equipment-select"
+          :disabled="loading"
+        >
+          <option :value="null" disabled>-- Seleccione un Analizador --</option>
+          <option v-for="eq in equipmentsList" :key="eq.id" :value="eq.id">
+            {{ eq.name }} {{ eq.description ? `- ${eq.description}` : '' }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Controles para la extracción de archivo .clb de calibración -->
+      <div v-if="selectedEquipmentId" class="clb-export-panel">
+        <div class="clb-field">
+          <label for="clb-start-date">Fecha Inicio:</label>
+          <input
+            id="clb-start-date"
+            type="date"
+            v-model="startDate"
+            class="clb-input"
+          />
+        </div>
+
+        <div class="clb-field">
+          <label for="clb-end-date">Fecha Fin:</label>
+          <input
+            id="clb-end-date"
+            type="date"
+            v-model="endDate"
+            class="clb-input"
+          />
+        </div>
+
+        <div class="clb-field">
+          <label for="clb-sample-select">Muestra:</label>
+          <select
+            id="clb-sample-select"
+            v-model="selectedSampleId"
+            class="clb-select"
+          >
+            <option value="">-- Todas las Muestras --</option>
+            <option v-for="s in samplesList" :key="s.id" :value="s.id">
+              {{ s.tag ? `${s.tag} - ${s.name}` : s.name }}
+            </option>
+          </select>
+        </div>
+
+        <button
+          class="btn-clb-export"
+          @click="exportClbFile"
+          :disabled="isExporting || loading"
+          title="Descargar archivo .clb delimitado por tabuladores"
+        >
+          <span v-if="isExporting">⏳ Extrayendo...</span>
+          <span v-else>📥 Extraer .clb</span>
+        </button>
+      </div>
     </div>
 
     <!-- Solo mostrar el grid si hay un equipo seleccionado -->
@@ -104,6 +153,14 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 const filterData = ref([]);
+
+// Estado para extracción de archivo .clb de calibración
+const today = new Date();
+const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+const startDate = ref(firstDayOfMonth.toISOString().split('T')[0]);
+const endDate = ref(today.toISOString().split('T')[0]);
+const selectedSampleId = ref('');
+const isExporting = ref(false);
 
 // ============================================================================
 // 3. PROPIEDADES COMPUTADAS (Dropdowns en el Grid)
@@ -366,6 +423,142 @@ const handleDelete = async (idsToDelete) => {
 };
 
 // ============================================================================
+// 5.1 EXTRACCIÓN DE ARCHIVO .CLB
+// ============================================================================
+/**
+ * Extrae y descarga un archivo de texto plano (.clb) con las lecturas y porcentajes
+ * de calibración delimitadas por tabuladores, aplicando el rango de fechas, la muestra seleccionada
+ * y conservando los filtros activos de la tabla.
+ */
+const exportClbFile = async () => {
+  if (!selectedEquipmentId.value) {
+    alert('Por favor selecciona un analizador primero.');
+    return;
+  }
+
+  if (!startDate.value || !endDate.value) {
+    alert('Por favor selecciona una fecha de inicio y una fecha de fin.');
+    return;
+  }
+
+  if (startDate.value > endDate.value) {
+    alert('La fecha de inicio no puede ser posterior a la fecha de fin.');
+    return;
+  }
+
+  isExporting.value = true;
+
+  try {
+    const params = {
+      sample__equipment: selectedEquipmentId.value,
+      date__gte: startDate.value,
+      date__lte: endDate.value,
+      page_size: 10000,
+      ordering: 'date,time'
+    };
+
+    // Si se seleccionó una muestra específica en el selector
+    if (selectedSampleId.value) {
+      params.sample = selectedSampleId.value;
+    }
+
+    // Conservar filtros activos adicionales aplicados en la grilla ExcelGrid
+    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
+      let fieldName = colKeys[colIndex];
+      if (fieldName === 'userp') fieldName = 'user';
+
+      // Si ya filtramos por muestra arriba, evitar conflicto
+      if (fieldName === 'sample' && selectedSampleId.value) continue;
+
+      if (fieldName && values.length > 0) {
+        const vals = Array.from(values);
+        const validVals = vals.filter(v => v !== '');
+        if (validVals.length > 0) {
+          params[`${fieldName}__in`] = validVals.join(',');
+        }
+        if (vals.includes('')) {
+          params[`${fieldName}__isnull`] = 'True';
+        }
+      }
+    }
+
+    const response = await api.get('assays/', { params });
+    const assays = response.data.results || response.data || [];
+
+    if (!assays || assays.length === 0) {
+      alert('No se encontraron registros de ensayos para el rango de fechas, analizador y muestra seleccionados.');
+      isExporting.value = false;
+      return;
+    }
+
+    // Cabecera solicitada con columnas separadas por tabulador
+    const headersClb = ['Fecha', 'Hora', 'FE', 'CU', 'ZN', 'MO', 'SC', '% Fe', '% Cu', '% Zn', '% Mo', '%Ins', '%Sol'];
+
+    const formatValue = (val) => {
+      if (val === null || val === undefined) return '';
+      return String(val);
+    };
+
+    const formatTimeVal = (timeStr) => {
+      if (!timeStr) return '';
+      return timeStr.length > 5 ? timeStr.substring(0, 5) : timeStr;
+    };
+
+    const lines = [];
+    lines.push(headersClb.join('\t'));
+
+    assays.forEach(a => {
+      const row = [
+        formatValue(a.date),
+        formatTimeVal(a.time),
+        formatValue(a.n1fe),
+        formatValue(a.n2cu),
+        formatValue(a.n3zn),
+        formatValue(a.n4mo),
+        formatValue(a.n6sc),
+        formatValue(a.pFe),
+        formatValue(a.pCu),
+        formatValue(a.pZn),
+        formatValue(a.pMo),
+        formatValue(a.pIns),
+        formatValue(a.pSol)
+      ];
+      lines.push(row.join('\t'));
+    });
+
+    const clbText = lines.join('\r\n');
+    const blob = new Blob([clbText], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    // Nombre descriptivo para el archivo descargado
+    let sampleName = 'todas_muestras';
+    if (selectedSampleId.value) {
+      const foundSample = samplesList.value.find(s => s.id == selectedSampleId.value);
+      if (foundSample) {
+        sampleName = (foundSample.name || foundSample.tag || 'muestra').replace(/\s+/g, '_').toLowerCase();
+      }
+    }
+    const eqObj = equipmentsList.value.find(e => e.id == selectedEquipmentId.value);
+    const eqName = eqObj ? eqObj.name.replace(/\s+/g, '_').toLowerCase() : 'analizador';
+
+    link.href = url;
+    link.setAttribute('download', `${eqName}_${sampleName}_${startDate.value}_a_${endDate.value}.clb`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    alert(`Archivo .clb generado y descargado exitosamente con ${assays.length} registro(s).`);
+  } catch (err) {
+    console.error('Error al exportar archivo .clb:', err);
+    alert('Ocurrió un error al extraer los datos para el archivo .clb. Verifique la conexión.');
+  } finally {
+    isExporting.value = false;
+  }
+};
+
+// ============================================================================
 // 6. CICLO DE VIDA
 // ============================================================================
 onMounted(() => {
@@ -382,27 +575,122 @@ onMounted(() => {
 }
 
 .header-actions {
-  padding: 15px;
-  background-color: #f8f9fa;
-  border-bottom: 1px solid #dee2e6;
+  padding: 12px 16px;
+  background-color: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
   display: flex;
+  justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 15px;
 }
 
+.analyzer-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .header-actions label {
-  font-weight: bold;
-  color: #495057;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #334155;
 }
 
 .equipment-select {
-  padding: 8px 12px;
-  border: 1px solid #ced4da;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
   border-radius: 4px;
-  font-size: 1rem;
-  min-width: 350px;
+  font-size: 0.9rem;
+  min-width: 260px;
   background-color: white;
   cursor: pointer;
+  outline: none;
+}
+
+.equipment-select:focus {
+  border-color: #2563eb;
+}
+
+/* Panel de controles de extracción .clb */
+.clb-export-panel {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  background-color: #ffffff;
+  padding: 6px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.clb-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.clb-field label {
+  font-size: 0.85rem;
+  color: #475569;
+  font-weight: 500;
+}
+
+.clb-input {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #1e293b;
+  outline: none;
+  background-color: #ffffff;
+  cursor: pointer;
+}
+
+.clb-input:focus {
+  border-color: #2563eb;
+}
+
+.clb-select {
+  padding: 4px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  color: #1e293b;
+  max-width: 200px;
+  background-color: #ffffff;
+  cursor: pointer;
+  outline: none;
+}
+
+.clb-select:focus {
+  border-color: #2563eb;
+}
+
+.btn-clb-export {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background-color: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.btn-clb-export:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.btn-clb-export:disabled {
+  background-color: #94a3b8;
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .grid-container {

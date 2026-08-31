@@ -126,6 +126,9 @@
             :key="item.originalIndex"
             :style="{ height: rowHeights[item.originalIndex] + 'px' }"
             :class="{ 'row-selected': selectedRowIndices.has(item.originalIndex) }"
+            @click="emit('rowSelect', { index: item.originalIndex, row: item.row })"
+            @dblclick="emit('rowDblClick', { index: item.originalIndex, row: item.row })"
+            title="Haz clic para seleccionar o doble clic para abrir el modal de detalle/edición"
           >
             <!-- Celda de índice de fila (SOLO VISIBLE EN MODO EDICIÓN) -->
             <td
@@ -164,7 +167,7 @@
                 @mousedown="startSelection(visualIndex, cIndex)"
                 @mouseover="updateSelection(visualIndex, cIndex)"
                 @focus="setActive(visualIndex, cIndex)"
-                @paste.prevent="handlePaste($event, item.originalIndex, cIndex)"
+                @paste.prevent="handlePaste($event, visualIndex, cIndex)"
                 @keydown="handleKeydown($event, visualIndex, cIndex)"
                 @copy="handleCopy"
 
@@ -177,6 +180,7 @@
                     v-if="isEditMode"
                     :value="cell"
                     @change="updateCellSelect($event, item.originalIndex, cIndex)"
+                    @paste.prevent="handlePaste($event, visualIndex, cIndex)"
                     class="cell-select"
                     @mousedown.stop
                   >
@@ -308,7 +312,7 @@ const props = defineProps({
 });
 
 // --- EMITS ---
-const emit = defineEmits(['save', 'delete', 'pageChange', 'pageSizeChange', 'filterChange', 'sortChange']);
+const emit = defineEmits(['save', 'delete', 'pageChange', 'pageSizeChange', 'filterChange', 'sortChange', 'rowDblClick', 'rowSelect']);
 
 // --- MÉTODOS PAGINACIÓN ---
 const changePage = (newPage) => {
@@ -747,35 +751,58 @@ const handleCopy = (e) => {
 const fallbackCopy = (text) => {
     if (clipboardInput.value) { clipboardInput.value.value = text; clipboardInput.value.select(); document.execCommand('copy'); }
 };
-const handlePaste = (e, originalRowIndex, startCol) => {
+const handlePaste = (e, visualRowIndex, startCol) => {
   if (!isEditMode.value) { alert('Debes habilitar el modo edición para pegar datos.'); return; }
   const clipboardData = e.clipboardData || window.clipboardData;
-  const pastedData = clipboardData.getData('Text');
+  const pastedData = clipboardData ? clipboardData.getData('Text') : '';
   if (!pastedData) return;
-  const rows = pastedData.split(/\r\n|\n|\r/).filter(row => row.length > 0 || row === "");
-  if (rows.length > 0 && rows[rows.length - 1] === "") rows.pop();
+
+  // Quitar saltos de línea residuales al final (común en Excel al copiar en Windows)
+  const cleanData = pastedData.replace(/(\r\n|\n|\r)+$/, '');
+  if (!cleanData) return;
+
+  const rows = cleanData.split(/\r\n|\n|\r/);
+
   rows.forEach((rowStr, rOffset) => {
-    const cells = rowStr.split('\t');
-    const targetRow = originalRowIndex + rOffset;
-    if (targetRow >= localGrid.value.length) {
+    const currentVisualRow = visualRowIndex + rOffset;
+    let targetOriginalRow;
+
+    if (currentVisualRow < filteredGrid.value.length) {
+      // Si la fila visual existe, obtener su índice original real en localGrid
+      targetOriginalRow = filteredGrid.value[currentVisualRow].originalIndex;
+    } else {
+      // Si el pegado excede las filas visibles actuales, crear una nueva fila al final
       const newRow = new Array(props.headers.length).fill('');
       localGrid.value.push(newRow);
       rowHeights.value.push(DEFAULT_ROW_HEIGHT);
+      targetOriginalRow = localGrid.value.length - 1;
     }
+
+    // No sobreescribir filas de resumen si existen
+    if (localGrid.value[targetOriginalRow]?.isSummary) return;
+
+    const cells = rowStr.split('\t');
     cells.forEach((cellData, cOffset) => {
       const targetCol = startCol + cOffset;
       if (targetCol < props.headers.length) {
-          let valToPaste = cellData.trim();
-          if (isColumnSelect(targetCol)) {
-              const options = getColumnOptions(targetCol);
-              const match = options.find(opt => opt.label.toLowerCase() === valToPaste.toLowerCase());
-              if (match) valToPaste = match.value;
-          }
-          localGrid.value[targetRow][targetCol] = valToPaste;
+        let valToPaste = cellData.trim();
+        if (isColumnSelect(targetCol)) {
+          const options = getColumnOptions(targetCol);
+          const match = options.find(opt =>
+            String(opt.label).toLowerCase() === valToPaste.toLowerCase() ||
+            String(opt.value).toLowerCase() === valToPaste.toLowerCase()
+          );
+          if (match) valToPaste = match.value;
+        }
+        localGrid.value[targetOriginalRow][targetCol] = valToPaste;
       }
     });
   });
-  setTimeout(() => { const table = document.querySelector('.excel-table tbody'); }, 0);
+
+  // Desenfocar el elemento activo para evitar que el evento blur sobreescriba con datos antiguos del DOM
+  if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    document.activeElement.blur();
+  }
 };
 
 // --- REDIMENSIONAR ---

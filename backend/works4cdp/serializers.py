@@ -35,6 +35,7 @@ class TaskCatalogSerializer(serializers.ModelSerializer):
 
 class TaskSerializer(serializers.ModelSerializer):
     name = serializers.CharField(source='task_catalog.name', read_only=True)
+    task_catalog_description = serializers.CharField(source='task_catalog.description', read_only=True)
 
     class Meta:
         model = Task

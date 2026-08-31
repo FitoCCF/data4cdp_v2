@@ -1,0 +1,377 @@
+{
+  "backend/data4cdp_v1/__init__.py": {
+    "mtime": 1772751008.105046,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/data4cdp_v1/asgi.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "e72c9a2e6087c1a7c781145def515c95",
+    "semantic_hash": "e72c9a2e6087c1a7c781145def515c95"
+  },
+  "backend/data4cdp_v1/settings.py": {
+    "mtime": 1772853170.1051507,
+    "ast_hash": "6f479727194596ddc61ae7d857592d1c",
+    "semantic_hash": "6f479727194596ddc61ae7d857592d1c"
+  },
+  "backend/data4cdp_v1/urls.py": {
+    "mtime": 1782705451.2721236,
+    "ast_hash": "fa8fd38fa9b691b57fe14bc0728f07e1",
+    "semantic_hash": "fa8fd38fa9b691b57fe14bc0728f07e1"
+  },
+  "backend/data4cdp_v1/wsgi.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "eb82d13831c8f952b64a9926fa9fbfe3",
+    "semantic_hash": "eb82d13831c8f952b64a9926fa9fbfe3"
+  },
+  "backend/manage.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "9c9f4e9d568759926279a30e92d552de",
+    "semantic_hash": "9c9f4e9d568759926279a30e92d552de"
+  },
+  "backend/taskp.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "cb3f7d08ab317d15a1bdfef92d014b39",
+    "semantic_hash": "cb3f7d08ab317d15a1bdfef92d014b39"
+  },
+  "backend/test.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "a7ae1a688c8e61c37dcf30283a2b1703",
+    "semantic_hash": "a7ae1a688c8e61c37dcf30283a2b1703"
+  },
+  "backend/works4cdp/__init__.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/works4cdp/admin.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "447636474fba4987603a56eae6842d49",
+    "semantic_hash": "447636474fba4987603a56eae6842d49"
+  },
+  "backend/works4cdp/apps.py": {
+    "mtime": 1772751008.106046,
+    "ast_hash": "336854b6b307b87f9b4e03592fd4c212",
+    "semantic_hash": "336854b6b307b87f9b4e03592fd4c212"
+  },
+  "backend/works4cdp/migrations/0001_initial.py": {
+    "mtime": 1776962544.0839021,
+    "ast_hash": "b4884ae88b8a39dcc09449c62c5baa16",
+    "semantic_hash": "b4884ae88b8a39dcc09449c62c5baa16"
+  },
+  "backend/works4cdp/migrations/0002_alter_taskp_is_permanent_reschedule.py": {
+    "mtime": 1776962544.0839021,
+    "ast_hash": "7db7e748fd6235ae353a9327d3d585cf",
+    "semantic_hash": "7db7e748fd6235ae353a9327d3d585cf"
+  },
+  "backend/works4cdp/migrations/0003_alter_assay_chemical_id.py": {
+    "mtime": 1777863918.6570683,
+    "ast_hash": "49464384839f272d58a26d4bb62f513f",
+    "semantic_hash": "49464384839f272d58a26d4bb62f513f"
+  },
+  "backend/works4cdp/migrations/0004_assay_timestamp.py": {
+    "mtime": 1779615686.5999987,
+    "ast_hash": "65086504575cf3ef3e30b0d27ddafac4",
+    "semantic_hash": "65086504575cf3ef3e30b0d27ddafac4"
+  },
+  "backend/works4cdp/migrations/0005_alter_assay_options_assay_works4cdp_assay_pkey.py": {
+    "mtime": 1779620114.173806,
+    "ast_hash": "8331180d762eeb2feb649dab19456302",
+    "semantic_hash": "8331180d762eeb2feb649dab19456302"
+  },
+  "backend/works4cdp/migrations/0006_taskp_corrective_task_alter_taskp_task_correctivetask_name.py": {
+    "mtime": 1781072778.3128958,
+    "ast_hash": "250ff29e356602839e8054c74f54e905",
+    "semantic_hash": "250ff29e356602839e8054c74f54e905"
+  },
+  "backend/works4cdp/migrations/0007_migrate_corrective_tasks.py": {
+    "mtime": 1781072785.3978958,
+    "ast_hash": "e1f12de600488f31d61e84f94a7da246",
+    "semantic_hash": "e1f12de600488f31d61e84f94a7da246"
+  },
+  "backend/works4cdp/migrations/0008_remove_correctivetask_redundant_fields.py": {
+    "mtime": 1781072803.6358957,
+    "ast_hash": "446eeccdaa99fcffab4a343f8d2d9f5f",
+    "semantic_hash": "446eeccdaa99fcffab4a343f8d2d9f5f"
+  },
+  "backend/works4cdp/migrations/0009_correctivetask_turno.py": {
+    "mtime": 1781086369.7668047,
+    "ast_hash": "6614b9b6b274b750ad19145595a7a8ae",
+    "semantic_hash": "6614b9b6b274b750ad19145595a7a8ae"
+  },
+  "backend/works4cdp/migrations/0010_add_deshabilitado_state.py": {
+    "mtime": 1781812427.1458576,
+    "ast_hash": "50e183d156af57ba1a8de3575f6ed4d3",
+    "semantic_hash": "50e183d156af57ba1a8de3575f6ed4d3"
+  },
+  "backend/works4cdp/migrations/0011_alter_taskp_corrective_task.py": {
+    "mtime": 1782162701.0405138,
+    "ast_hash": "06ed6c2f81c6233bf2610925752cfe59",
+    "semantic_hash": "06ed6c2f81c6233bf2610925752cfe59"
+  },
+  "backend/works4cdp/migrations/0012_taskcatalog_alter_task_name_and_more.py": {
+    "mtime": 1782705485.3601243,
+    "ast_hash": "03d0cfd3f6489486cfdb51660cffbc74",
+    "semantic_hash": "03d0cfd3f6489486cfdb51660cffbc74"
+  },
+  "backend/works4cdp/migrations/0013_migrate_task_names.py": {
+    "mtime": 1782705495.0871246,
+    "ast_hash": "dc83e5fa8dc5ddc2560fdabded4a7bd1",
+    "semantic_hash": "dc83e5fa8dc5ddc2560fdabded4a7bd1"
+  },
+  "backend/works4cdp/migrations/0014_remove_task_name_alter_task_task_catalog.py": {
+    "mtime": 1782705565.7071264,
+    "ast_hash": "36a3715b1b8deced02a589dbab5286f0",
+    "semantic_hash": "36a3715b1b8deced02a589dbab5286f0"
+  },
+  "backend/works4cdp/migrations/__init__.py": {
+    "mtime": 1772751008.107046,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "backend/works4cdp/models.py": {
+    "mtime": 1782705499.8091247,
+    "ast_hash": "19e48cdb7babf8b2ff9f5f873ae74d7c",
+    "semantic_hash": "19e48cdb7babf8b2ff9f5f873ae74d7c"
+  },
+  "backend/works4cdp/pagination.py": {
+    "mtime": 1772853155.9861498,
+    "ast_hash": "da61125de4781323cf0d63a5e1532c6c",
+    "semantic_hash": "da61125de4781323cf0d63a5e1532c6c"
+  },
+  "backend/works4cdp/serializers.py": {
+    "mtime": 1782705405.5891225,
+    "ast_hash": "5011c71eacdb1e8226b17b0c64d7ca12",
+    "semantic_hash": "5011c71eacdb1e8226b17b0c64d7ca12"
+  },
+  "backend/works4cdp/tests.py": {
+    "mtime": 1772751008.108046,
+    "ast_hash": "465b7e9f69bfd158c850cdfbc7306818",
+    "semantic_hash": "465b7e9f69bfd158c850cdfbc7306818"
+  },
+  "backend/works4cdp/urls.py": {
+    "mtime": 1772751008.108046,
+    "ast_hash": "aec4584406d7c0a8dec16754e600efab",
+    "semantic_hash": "aec4584406d7c0a8dec16754e600efab"
+  },
+  "backend/works4cdp/views.py": {
+    "mtime": 1782705446.5241234,
+    "ast_hash": "f4e1dd09109accc5c280018d197d2ca6",
+    "semantic_hash": "f4e1dd09109accc5c280018d197d2ca6"
+  },
+  "dbCDP.session.sql": {
+    "mtime": 1776962544.0839021,
+    "ast_hash": "ef4dcd915bc5d1887292fe3b95f44452",
+    "semantic_hash": "ef4dcd915bc5d1887292fe3b95f44452"
+  },
+  "frontend/vue_app/.vite/deps/_metadata.json": {
+    "mtime": 1772751008.108046,
+    "ast_hash": "8908db80811bc6ee8b42004e62c8a7c8",
+    "semantic_hash": "8908db80811bc6ee8b42004e62c8a7c8"
+  },
+  "frontend/vue_app/.vite/deps/chunk-IJV5NOMV.js": {
+    "mtime": 1772751008.109046,
+    "ast_hash": "e4dbb5192e530d2881f4d55f26524243",
+    "semantic_hash": "e4dbb5192e530d2881f4d55f26524243"
+  },
+  "frontend/vue_app/.vite/deps/package.json": {
+    "mtime": 1772751008.111046,
+    "ast_hash": "d0707362e90f00edd12435e9d3b9d71c",
+    "semantic_hash": "d0707362e90f00edd12435e9d3b9d71c"
+  },
+  "frontend/vue_app/.vite/deps/pinia.js": {
+    "mtime": 1772751008.112046,
+    "ast_hash": "044aee2ae793bc7454c56bfa2a3a7008",
+    "semantic_hash": "044aee2ae793bc7454c56bfa2a3a7008"
+  },
+  "frontend/vue_app/.vite/deps/vue-router.js": {
+    "mtime": 1772751008.1140459,
+    "ast_hash": "8b6218ba637e88c531bc80805befb080",
+    "semantic_hash": "8b6218ba637e88c531bc80805befb080"
+  },
+  "frontend/vue_app/.vite/deps/vue.js": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "c3e41111cfc3ec6f82c216598a894c0d",
+    "semantic_hash": "c3e41111cfc3ec6f82c216598a894c0d"
+  },
+  "frontend/vue_app/.vscode/extensions.json": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "886c161c2f2d9388473a64033e7d1931",
+    "semantic_hash": "886c161c2f2d9388473a64033e7d1931"
+  },
+  "frontend/vue_app/package.json": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "07b7617579903b24e74791c803f9f747",
+    "semantic_hash": "07b7617579903b24e74791c803f9f747"
+  },
+  "frontend/vue_app/src/App.vue": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "a22fea21ee139660b931eee37235c6e9",
+    "semantic_hash": "a22fea21ee139660b931eee37235c6e9"
+  },
+  "frontend/vue_app/src/api.js": {
+    "mtime": 1780255753.2012563,
+    "ast_hash": "c74e791082016fe72a68edf3e103f1e1",
+    "semantic_hash": "c74e791082016fe72a68edf3e103f1e1"
+  },
+  "frontend/vue_app/src/components/BaseTable.vue": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "da1afe02122667311a730edd22d18faa",
+    "semantic_hash": "da1afe02122667311a730edd22d18faa"
+  },
+  "frontend/vue_app/src/components/ExcelGrid.vue": {
+    "mtime": 1781087753.6237955,
+    "ast_hash": "44c151f86afbce7cef69509cba8ddd62",
+    "semantic_hash": "44c151f86afbce7cef69509cba8ddd62"
+  },
+  "frontend/vue_app/src/components/Header.vue": {
+    "mtime": 1781896978.120601,
+    "ast_hash": "0878f3ac31342c8650c49b63dc579fe6",
+    "semantic_hash": "0878f3ac31342c8650c49b63dc579fe6"
+  },
+  "frontend/vue_app/src/components/Sidebar.vue": {
+    "mtime": 1781897443.1838753,
+    "ast_hash": "a12a2daed8675e524b3579a52705ae48",
+    "semantic_hash": "a12a2daed8675e524b3579a52705ae48"
+  },
+  "frontend/vue_app/src/composables/useApi.js": {
+    "mtime": 1776962544.0859022,
+    "ast_hash": "9b91e03d053897c2172a2c183da9046b",
+    "semantic_hash": "9b91e03d053897c2172a2c183da9046b"
+  },
+  "frontend/vue_app/src/composables/useEquipmentHierarchies.js": {
+    "mtime": 1780256666.7189827,
+    "ast_hash": "5de78c5ca4354e11cfa6d21f21c351a5",
+    "semantic_hash": "5de78c5ca4354e11cfa6d21f21c351a5"
+  },
+  "frontend/vue_app/src/main.js": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "453d0306310045da3b998192d3c72384",
+    "semantic_hash": "453d0306310045da3b998192d3c72384"
+  },
+  "frontend/vue_app/src/router/index.js": {
+    "mtime": 1781897433.9748757,
+    "ast_hash": "6045c258cba4a6e8c1d851b2181133b0",
+    "semantic_hash": "6045c258cba4a6e8c1d851b2181133b0"
+  },
+  "frontend/vue_app/src/utils/gridHelpers.js": {
+    "mtime": 1782161086.0604184,
+    "ast_hash": "663e649d493f95175e0ff65dd950409b",
+    "semantic_hash": "663e649d493f95175e0ff65dd950409b"
+  },
+  "frontend/vue_app/src/views/ExcelTestView.vue": {
+    "mtime": 1772751008.116046,
+    "ast_hash": "ba107947c6da28193ea372d2591c183a",
+    "semantic_hash": "ba107947c6da28193ea372d2591c183a"
+  },
+  "frontend/vue_app/src/views/MainView.vue": {
+    "mtime": 1772751008.116046,
+    "ast_hash": "d6dc5a10e16320e0566e29247be05610",
+    "semantic_hash": "d6dc5a10e16320e0566e29247be05610"
+  },
+  "frontend/vue_app/src/views/genericViews/AreasView.vue": {
+    "mtime": 1782161171.9284234,
+    "ast_hash": "c7691c5aceab4b63bc5df5f61b0f6ba3",
+    "semantic_hash": "c7691c5aceab4b63bc5df5f61b0f6ba3"
+  },
+  "frontend/vue_app/src/views/genericViews/AssaysView.vue": {
+    "mtime": 1782161106.3794196,
+    "ast_hash": "abbeca7393704e0f45c0fee52050094b",
+    "semantic_hash": "abbeca7393704e0f45c0fee52050094b"
+  },
+  "frontend/vue_app/src/views/genericViews/CTasksView.vue": {
+    "mtime": 1782705720.2551298,
+    "ast_hash": "d4e713facd0f4d77e9d8051ce96bf232",
+    "semantic_hash": "d4e713facd0f4d77e9d8051ce96bf232"
+  },
+  "frontend/vue_app/src/views/genericViews/EquipmentsView.vue": {
+    "mtime": 1782161223.7624266,
+    "ast_hash": "8d9e5e2dad95e682ad74b42304b7e8cb",
+    "semantic_hash": "8d9e5e2dad95e682ad74b42304b7e8cb"
+  },
+  "frontend/vue_app/src/views/genericViews/GroupScheduleView.vue": {
+    "mtime": 1781089313.135785,
+    "ast_hash": "adfece57c260905092c583f620e6da2a",
+    "semantic_hash": "adfece57c260905092c583f620e6da2a"
+  },
+  "frontend/vue_app/src/views/genericViews/MonthlyCalendarView.vue": {
+    "mtime": 1782157632.8282144,
+    "ast_hash": "3e6e62ba3540cc599408c931a3dd26cb",
+    "semantic_hash": "3e6e62ba3540cc599408c931a3dd26cb"
+  },
+  "frontend/vue_app/src/views/genericViews/PlantsView.vue": {
+    "mtime": 1782161140.8714216,
+    "ast_hash": "45a4abfd56ec0970ee4b17989526347b",
+    "semantic_hash": "45a4abfd56ec0970ee4b17989526347b"
+  },
+  "frontend/vue_app/src/views/genericViews/STasksViews.vue": {
+    "mtime": 1782161046.728416,
+    "ast_hash": "e8f453321c6856b1218d50035430be0d",
+    "semantic_hash": "e8f453321c6856b1218d50035430be0d"
+  },
+  "frontend/vue_app/src/views/genericViews/SamplesView copy.vue": {
+    "mtime": 1772751008.116046,
+    "ast_hash": "239e6435b116c3f2dfc2744d5c2cff70",
+    "semantic_hash": "239e6435b116c3f2dfc2744d5c2cff70"
+  },
+  "frontend/vue_app/src/views/genericViews/SamplesView.vue": {
+    "mtime": 1782161246.0584278,
+    "ast_hash": "cd8cdf213a2cf3bd5a56762135e81d60",
+    "semantic_hash": "cd8cdf213a2cf3bd5a56762135e81d60"
+  },
+  "frontend/vue_app/src/views/genericViews/SamplingView.vue": {
+    "mtime": 1782865523.2214527,
+    "ast_hash": "3b5a6e1a859cbf0d0fdf2ebb79a3e6e2",
+    "semantic_hash": "3b5a6e1a859cbf0d0fdf2ebb79a3e6e2"
+  },
+  "frontend/vue_app/src/views/genericViews/SystemsView.vue": {
+    "mtime": 1782161197.729425,
+    "ast_hash": "9eeb655e2e25da5ee1c3e3527933c735",
+    "semantic_hash": "9eeb655e2e25da5ee1c3e3527933c735"
+  },
+  "frontend/vue_app/src/views/genericViews/TasksView.vue": {
+    "mtime": 1782705676.559129,
+    "ast_hash": "32b9215e26cbec6cf42f6ebfd7375052",
+    "semantic_hash": "32b9215e26cbec6cf42f6ebfd7375052"
+  },
+  "frontend/vue_app/src/views/genericViews/UserPsView.vue": {
+    "mtime": 1782161072.9414177,
+    "ast_hash": "2116f39dd5147d0654ee88d16df58d40",
+    "semantic_hash": "2116f39dd5147d0654ee88d16df58d40"
+  },
+  "frontend/vue_app/src/views/genericViews/UsersView.vue": {
+    "mtime": 1782161015.2664142,
+    "ast_hash": "a08155f499b65ca683ab9e6a7a905998",
+    "semantic_hash": "a08155f499b65ca683ab9e6a7a905998"
+  },
+  "frontend/vue_app/src/views/genericViews/WeeklyTasksView 2.vue": {
+    "mtime": 1772751008.116046,
+    "ast_hash": "989e58b78829d6aed98fbc33a5ba626a",
+    "semantic_hash": "989e58b78829d6aed98fbc33a5ba626a"
+  },
+  "frontend/vue_app/src/views/genericViews/WeeklyTasksView copy.vue": {
+    "mtime": 1772751008.116046,
+    "ast_hash": "0bf4e427c32b5e6ef3c20c6afa0077c7",
+    "semantic_hash": "0bf4e427c32b5e6ef3c20c6afa0077c7"
+  },
+  "frontend/vue_app/src/views/genericViews/WeeklyTasksView.vue": {
+    "mtime": 1782157624.7632139,
+    "ast_hash": "bd87ea3b75c39e2809a40959f18e80ff",
+    "semantic_hash": "bd87ea3b75c39e2809a40959f18e80ff"
+  },
+  "frontend/vue_app/vite.config.js": {
+    "mtime": 1780256076.5349865,
+    "ast_hash": "2ddfc13999798a249efb5c874e13a3c5",
+    "semantic_hash": "2ddfc13999798a249efb5c874e13a3c5"
+  },
+  "db_normalization_analysis.md": {
+    "mtime": 1782160463.472611,
+    "ast_hash": "583e6109772a256c1b3fcdf7a3b8ad6b",
+    "semantic_hash": "583e6109772a256c1b3fcdf7a3b8ad6b"
+  },
+  "frontend/vue_app/PROJECT_STRUCTURE.md": {
+    "mtime": 1772751008.115046,
+    "ast_hash": "7940060b7c08f26eae687d36ffb9f342",
+    "semantic_hash": "7940060b7c08f26eae687d36ffb9f342"
+  }
+}

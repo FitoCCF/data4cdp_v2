@@ -284,7 +284,23 @@ const filteredAssays = computed(() => {
 
 // Convierte el array de objetos filtrado a una matriz plana bidimensional para ser leída por ExcelGrid
 const gridData = computed(() => {
-  return filteredAssays.value.map(assay => {
+  // Ordenar los ensayos por la columna SN (tag de la muestra) en orden alfanumérico natural
+  const sortedAssays = [...filteredAssays.value].sort((a, b) => {
+    const sampleIdA = a.sample && typeof a.sample === 'object' ? a.sample.id : a.sample;
+    const sampleIdB = b.sample && typeof b.sample === 'object' ? b.sample.id : b.sample;
+    const tagA = (samplesById.value[sampleIdA]?.tag || '').toString();
+    const tagB = (samplesById.value[sampleIdB]?.tag || '').toString();
+
+    const snComparison = tagA.localeCompare(tagB, undefined, { numeric: true, sensitivity: 'base' });
+    if (snComparison !== 0) return snComparison;
+
+    // Criterio secundario: ID de instancia o ID del ensayo
+    const instA = (a.instance || '').toString();
+    const instB = (b.instance || '').toString();
+    return instA.localeCompare(instB, undefined, { numeric: true, sensitivity: 'base' });
+  });
+
+  return sortedAssays.map(assay => {
     // Identificar el ID de muestra asociado al ensayo
     const sampleId = assay.sample && typeof assay.sample === 'object' ? assay.sample.id : assay.sample;
     const sampleObj = samplesById.value[sampleId];

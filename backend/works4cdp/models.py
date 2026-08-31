@@ -258,6 +258,14 @@ class Assay(models.Model):
                 self.timestamp = dt
             else:
                 self.timestamp = timezone.make_aware(dt)
+
+        # Cálculo automático de pSol como respaldo solo si pSol es None y se cuentan con los pesos válidos
+        # (se preservan al 100% los valores manuales existentes en BD o ingresados por el usuario)
+        if self.pSol is None and self.tweight is not None and self.tara is not None and self.dweight is not None:
+            net_weight = self.tweight - self.tara
+            if net_weight > 0:
+                self.pSol = round((self.dweight / net_weight) * 100, 2)
+
         super().save(*args, **kwargs)
 
     class Meta:

@@ -302,6 +302,7 @@ const props = defineProps({
   headerGroups: { type: Array, default: () => [] },
   data: { type: Array, required: true, default: () => [] },
   columnsConfig: { type: Object, default: () => ({}) },
+  rowCalculator: { type: Function, default: null },
   // Nuevas props para Paginación y Filtrado backend
   currentPage: { type: Number, default: 1 },
   totalPages: { type: Number, default: 1 },
@@ -634,12 +635,21 @@ const promptSave = () => { showSaveModal.value = true; };
 const executeSave = () => { emit('save', localGrid.value); showSaveModal.value = false; };
 
 const updateCell = (e, originalRowIndex, c) => {
-  if (isEditMode.value) localGrid.value[originalRowIndex][c] = e.target.innerText;
-  else e.target.innerText = localGrid.value[originalRowIndex][c];
+  if (isEditMode.value) {
+    localGrid.value[originalRowIndex][c] = e.target.innerText;
+    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
+      props.rowCalculator(localGrid.value[originalRowIndex], c);
+    }
+  } else {
+    e.target.innerText = localGrid.value[originalRowIndex][c];
+  }
 };
 
 const updateCellSelect = (e, originalRowIndex, c) => {
-    localGrid.value[originalRowIndex][c] = e.target.value;
+  localGrid.value[originalRowIndex][c] = e.target.value;
+  if (props.rowCalculator && typeof props.rowCalculator === 'function') {
+    props.rowCalculator(localGrid.value[originalRowIndex], c);
+  }
 };
 
 // --- SELECCIÓN DE FILAS COMPLETAS ---
@@ -797,6 +807,10 @@ const handlePaste = (e, visualRowIndex, startCol) => {
         localGrid.value[targetOriginalRow][targetCol] = valToPaste;
       }
     });
+
+    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
+      props.rowCalculator(localGrid.value[targetOriginalRow], startCol);
+    }
   });
 
   // Desenfocar el elemento activo para evitar que el evento blur sobreescriba con datos antiguos del DOM

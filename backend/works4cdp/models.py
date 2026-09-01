@@ -226,6 +226,7 @@ class Assay(models.Model):
     pZn = models.FloatField(null=True, blank=True)
     pMo = models.FloatField(null=True, blank=True)
     pIns = models.FloatField(null=True, blank=True) # Insoluble
+    pOx = models.FloatField(null=True, blank=True) # Óxidos
     pSol = models.FloatField(null=True, blank=True) # Soluble
     
     # Pesos en balanza

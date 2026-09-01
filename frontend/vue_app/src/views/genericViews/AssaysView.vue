@@ -118,7 +118,7 @@ import { buildPayloadFromRow } from '../../utils/gridHelpers';
 // ============================================================================
 const headers = [
   'ID', 'Fecha', 'Hora', 'Instancia', 'N1 Fe', 'N2 Cu', 'N3 Zn', 'N4 Mo',
-  'N5 Ech5', 'N6 Sc', 'N7 Ech7', '% Fe', '% Cu', '% Zn', '% Mo', '% Ins', '% Sol',
+  'N5 Ech5', 'N6 Sc', 'N7 Ech7', '% Fe', '% Cu', '% Zn', '% Mo', '% Ins', '% Ox', '% Sol',
   'Tara', 'Peso Total', 'Peso Seco', 'Peso Prod.', 'Chemical ID',
   'Muestra', 'A1 Fe', 'A2 Cu', 'A3 Zn', 'A4 Mo', 'A5 A5', 'A6 Sol', 'A7 A7',
   'Usuario', 'Meta User'
@@ -126,7 +126,7 @@ const headers = [
 
 const colKeys = [
   'id', 'date', 'time', 'instance', 'n1fe', 'n2cu', 'n3zn', 'n4mo',
-  'n5ech5', 'n6sc', 'n7ech7', 'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
+  'n5ech5', 'n6sc', 'n7ech7', 'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pOx', 'pSol',
   'tara', 'tweight', 'dweight', 'pweight', 'chemical_id',
   'sample', 'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7',
   'user', 'meta_user'
@@ -166,17 +166,17 @@ const isExporting = ref(false);
 // 3. PROPIEDADES COMPUTADAS (Dropdowns en el Grid)
 // ============================================================================
 const columnsConfig = computed(() => {
-    // La clave '22' corresponde al índice de 'sample' (Muestra) en colKeys
-    // La clave '30' corresponde al índice de 'user' (Usuario) en colKeys
+    // La clave '23' corresponde al índice de 'sample' (Muestra) en colKeys
+    // La clave '31' corresponde al índice de 'user' (Usuario) en colKeys
     return {
-        22: {
+        23: {
             type: 'select',
             options: samplesList.value.map(s => ({
                 value: s.id,
                 label: s.tag ? `${s.tag} - ${s.name}` : s.name
             }))
         },
-        30: {
+        31: {
             type: 'select',
             options: usersList.value.map(u => ({
                 value: u.id,
@@ -491,8 +491,13 @@ const exportClbFile = async () => {
       return;
     }
 
-    // Cabecera solicitada con columnas separadas por tabulador
-    const headersClb = ['Fecha', 'Hora', 'FE', 'CU', 'ZN', 'MO', 'SC', '% Fe', '% Cu', '% Zn', '% Mo', '%Ins', '%Sol'];
+    // Determinar si el analizador seleccionado es de Molibdeno (Equipos ID 2 y 6)
+    const isMolyAnalyzer = [2, 6].includes(Number(selectedEquipmentId.value));
+
+    // Cabecera solicitada con columnas separadas por tabulador (%Ox solo para analizadores de moly)
+    const headersClb = isMolyAnalyzer
+      ? ['Fecha', 'Hora', 'FE', 'CU', 'ZN', 'MO', 'SC', '% Fe', '% Cu', '% Zn', '% Mo', '%Ins', '%Ox', '%Sol']
+      : ['Fecha', 'Hora', 'FE', 'CU', 'ZN', 'MO', 'SC', '% Fe', '% Cu', '% Zn', '% Mo', '%Ins', '%Sol'];
 
     const monthsClb = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
@@ -543,9 +548,15 @@ const exportClbFile = async () => {
         formatValue(a.pCu),
         formatValue(a.pZn),
         formatValue(a.pMo),
-        formatValue(a.pIns),
-        formatValue(a.pSol)
+        formatValue(a.pIns)
       ];
+
+      // La columna %Ox (pOx) solo se incluye para los analizadores de molibdeno (ID 2 y 6)
+      if (isMolyAnalyzer) {
+        row.push(formatValue(a.pOx));
+      }
+
+      row.push(formatValue(a.pSol));
       lines.push(row.join('\t'));
     });
 

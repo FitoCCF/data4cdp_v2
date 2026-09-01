@@ -1,7 +1,7 @@
 // List of database fields that represent numeric values where we need to replace decimal commas with dots
 export const numericKeys = [
   'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
-  'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pSol',
+  'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pOx', 'pSol',
   'tara', 'tweight', 'dweight', 'pweight',
   'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
 ];

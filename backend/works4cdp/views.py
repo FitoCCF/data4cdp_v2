@@ -334,6 +334,47 @@ class AssayViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in Assay._meta.fields]
         return Response({'fields': fields})
 
+    # Endpoint POST /api/assays/sync-equipment/ para sincronizar con el Courier a demanda desde la UI
+    @action(detail=False, methods=['post'], url_path='sync-equipment')
+    def sync_equipment(self, request):
+        # Extraemos el ID del equipo analizador recibido en el payload JSON.
+        equipment_id = request.data.get('equipment_id')
+        # Extraemos la fecha opcional en formato YYYY-MM-DD.
+        target_date_str = request.data.get('date')
+
+        # Validamos que se haya enviado el parámetro obligatorio equipment_id.
+        if not equipment_id:
+            return Response(
+                {"status": "error", "error": "El parámetro equipment_id es requerido."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Parseamos la fecha si fue provista por el cliente.
+        target_date = None
+        if target_date_str:
+            try:
+                from datetime import datetime
+                target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"status": "error", "error": f"Formato de fecha inválido: {target_date_str}. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        try:
+            # Importamos el servicio de sincronización de Couriers.
+            from .services.clb_syncer import AssaySyncService
+            # Ejecutamos la sincronización con conciliación delta por clave natural.
+            result = AssaySyncService.sync_equipment(equipment_id=equipment_id, target_date=target_date)
+            # Retornamos respuesta con el estado y la cantidad de registros insertados.
+            return Response(result, status=status.HTTP_200_OK)
+        except Exception as exc:
+            # Capturamos cualquier excepción inesperada para responder con código 500.
+            return Response(
+                {"status": "error", "error": f"Error al sincronizar con el analizador: {str(exc)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
 class CalendarViewSet(viewsets.ModelViewSet):
     queryset = Calendar.objects.all()
     serializer_class = CalendarSerializer

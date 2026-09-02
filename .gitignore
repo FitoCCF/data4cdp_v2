@@ -7,3 +7,6 @@ nodered_frontend/
 **/__pycache__/
 *.pyc
 graphify-out/
+# pixi environments
+.pixi/*
+!.pixi/config.toml

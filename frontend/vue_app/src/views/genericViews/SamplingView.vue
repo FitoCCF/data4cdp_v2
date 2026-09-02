@@ -384,6 +384,27 @@ const loadAssays = async () => {
   }
 
   await execute(async () => {
+    // REGLA INTELIGENTE DE MUESTREO (Sincronización Condicional):
+    // 1. Si la fecha es hoy o reciente: consultamos al analizador Courier en vivo para obtener las nuevas leyes.
+    // 2. Si es una fecha pasada: es un llenado diferido de laboratorio (pesos de balanza) o auditoría histórica;
+    //    por lo tanto, omitimos la llamada al Courier y leemos directamente de PostgreSQL/TimescaleDB en milisegundos.
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isTodayOrRecent = selectedDate.value >= todayStr;
+
+    if (isTodayOrRecent) {
+      try {
+        // Petición al backend para sincronizar el analizador seleccionado para la fecha indicada
+        await api.post('assays/sync-equipment/', {
+          equipment_id: selectedEquipment.value,
+          date: selectedDate.value
+        });
+      } catch (syncErr) {
+        // Filosofía Fail-Safe: si el Courier está fuera de línea o la red OT falla,
+        // registramos la advertencia pero continuamos para mostrar los datos locales que ya existan en BD.
+        console.warn('Courier no disponible para sincronización en caliente:', syncErr);
+      }
+    }
+
     const params = {
       page_size: 10000 // Tamaño de página grande para recuperar todos los registros diarios
     };

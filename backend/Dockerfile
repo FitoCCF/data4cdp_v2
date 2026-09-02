@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY . /app/
 
-RUN pip install --no-cache-dir django psycopg2-binary djangorestframework django-cors-headers
+RUN pip install --no-cache-dir django psycopg2-binary djangorestframework django-cors-headers django-filter requests
 
 EXPOSE 8000
 

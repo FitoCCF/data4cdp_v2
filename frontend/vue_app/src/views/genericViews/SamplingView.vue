@@ -34,6 +34,17 @@
                   {{ eq.label }}
                 </option>
               </select>
+              <!-- Botón manual para sincronizar o forzar lectura del Courier a demanda -->
+              <button
+                v-if="selectedEquipment"
+                type="button"
+                class="sync-courier-btn"
+                title="Forzar lectura y sincronización con el analizador Courier"
+                :disabled="loading"
+                @click="loadAssays(true)"
+              >
+                🔄 Sincronizar Courier
+              </button>
             </div>
           </td>
           <td class="code-cell">
@@ -374,7 +385,7 @@ const updateHeaderFieldsFromAssays = () => {
 };
 
 // Carga los ensayos de la base de datos aplicando la fecha seleccionada para evitar límites de paginación
-const loadAssays = async () => {
+const loadAssays = async (forceSync = false) => {
   // Si no hay un equipo seleccionado en la parte superior, limpiamos los datos y evitamos la consulta
   if (!selectedEquipment.value) {
     assays.value = [];
@@ -384,27 +395,7 @@ const loadAssays = async () => {
   }
 
   await execute(async () => {
-    // REGLA INTELIGENTE DE MUESTREO (Sincronización Condicional):
-    // 1. Si la fecha es hoy o reciente: consultamos al analizador Courier en vivo para obtener las nuevas leyes.
-    // 2. Si es una fecha pasada: es un llenado diferido de laboratorio (pesos de balanza) o auditoría histórica;
-    //    por lo tanto, omitimos la llamada al Courier y leemos directamente de PostgreSQL/TimescaleDB en milisegundos.
-    const todayStr = new Date().toISOString().split('T')[0];
-    const isTodayOrRecent = selectedDate.value >= todayStr;
-
-    if (isTodayOrRecent) {
-      try {
-        // Petición al backend para sincronizar el analizador seleccionado para la fecha indicada
-        await api.post('assays/sync-equipment/', {
-          equipment_id: selectedEquipment.value,
-          date: selectedDate.value
-        });
-      } catch (syncErr) {
-        // Filosofía Fail-Safe: si el Courier está fuera de línea o la red OT falla,
-        // registramos la advertencia pero continuamos para mostrar los datos locales que ya existan en BD.
-        console.warn('Courier no disponible para sincronización en caliente:', syncErr);
-      }
-    }
-
+    // Parámetros para filtrar ensayos por fecha y equipo en la base de datos
     const params = {
       page_size: 10000 // Tamaño de página grande para recuperar todos los registros diarios
     };
@@ -415,8 +406,41 @@ const loadAssays = async () => {
       params.sample__equipment = selectedEquipment.value;
     }
 
-    const res = await api.get('assays/', { params });
-    assays.value = res.data.results || res.data || [];
+    // 1. Primero consultamos qué registros ya existen en la base de datos local
+    let res = await api.get('assays/', { params });
+    let currentAssays = res.data.results || res.data || [];
+
+    // CONDICIÓN INTELIGENTE DE SINCRONIZACIÓN:
+    // Sincronizamos con el Courier si:
+    // a) El usuario hace clic en el botón 'Sincronizar Courier' (forceSync === true)
+    // b) O no hay ningún ensayo en la base de datos para esta fecha y equipo (currentAssays.length === 0)
+    // c) O la fecha seleccionada es hoy o futura (para capturar nuevas muestras en vivo)
+    const todayStr = new Date().toISOString().split('T')[0];
+    const isTodayOrFuture = selectedDate.value >= todayStr;
+    const shouldSync = forceSync || currentAssays.length === 0 || isTodayOrFuture;
+
+    if (shouldSync) {
+      try {
+        // Petición al backend para sincronizar el analizador seleccionado para la fecha indicada
+        const syncRes = await api.post('assays/sync-equipment/', {
+          equipment_id: selectedEquipment.value,
+          date: selectedDate.value
+        });
+
+        // Si se insertaron registros nuevos o la tabla estaba vacía en BD, refrescamos la consulta local
+        if (syncRes.data?.inserted > 0 || currentAssays.length === 0) {
+          res = await api.get('assays/', { params });
+          currentAssays = res.data.results || res.data || [];
+        }
+      } catch (syncErr) {
+        // Filosofía Fail-Safe: si el Courier está fuera de línea o la red OT falla,
+        // no rompemos la pantalla y mostramos los datos locales que ya existan en la BD.
+        console.warn('Courier no disponible o sin respuesta:', syncErr);
+      }
+    }
+
+    // Actualizamos el estado reactivo con los ensayos finales
+    assays.value = currentAssays;
 
     // Llamamos a la pre-población y configuración de operadores en base a los ensayos cargados
     updateHeaderFieldsFromAssays();
@@ -655,9 +679,32 @@ onMounted(() => {
   color: #000;
 }
 .equipment-select-container {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   padding: 2px;
   min-width: 250px;
+}
+.sync-courier-btn {
+  padding: 5px 12px;
+  background-color: #d32f2f;
+  color: #fff;
+  border: 1px solid #b71c1c;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+.sync-courier-btn:hover:not(:disabled) {
+  background-color: #b71c1c;
+}
+.sync-courier-btn:disabled {
+  background-color: #e0e0e0;
+  color: #9e9e9e;
+  border-color: #bdbdbd;
+  cursor: not-allowed;
 }
 
 .code-cell {

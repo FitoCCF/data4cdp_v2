@@ -174,7 +174,7 @@ class AssayTransformer:
         if not clean:
             return None
         # Formatos soportados por los analizadores y APIs.
-        for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        for fmt in ("%d.%m.%Y", "%Y-%m-%d", "%d/%m/%Y", "%Y/%m/%d"):
             try:
                 return datetime.strptime(clean, fmt).date()
             except ValueError:
@@ -327,18 +327,13 @@ class AssaySyncService:
                     a6sol_val = AssayTransformer.parse_float(entry.get("a6sol") or entry.get("a6sc") or entry.get("a6"))
                     a7a7_val = AssayTransformer.parse_float(entry.get("a7a7") or entry.get("a7ins") or entry.get("a7"))
 
-                    # Mapeo a campos de porcentajes usados en SamplingView (%Fe, %Cu, %Zn, %Mo, %Ins).
-                    p_fe_val = AssayTransformer.parse_float(entry.get("pFe")) or a1fe_val
-                    p_cu_val = AssayTransformer.parse_float(entry.get("pCu")) or a2cu_val
-                    p_zn_val = AssayTransformer.parse_float(entry.get("pZn")) or a3zn_val
-                    p_mo_val = AssayTransformer.parse_float(entry.get("pMo")) or a4mo_val
-                    p_ins_val = AssayTransformer.parse_float(entry.get("pIns")) or a7a7_val
-
                     # Construimos el timestamp consciente de zona horaria para TimescaleDB.
                     ts_val = AssayTransformer.build_timestamp(entry_date, entry_time)
 
-                    # Instanciamos el modelo Assay con solo los datos del analizador.
-                    # NOTA DE SEGURIDAD: No definimos tara, tweight, dweight ni pSol para no alterar pesos de laboratorio.
+                    # Instanciamos el modelo Assay con solo las lecturas instrumentales del Courier.
+                    # NOTA OPERATIVA: Las columnas de resultados de laboratorio químico (%Fe, %Cu, %Zn, %Mo, %Ins)
+                    # y los pesos de balanza (tara, peso total, peso seco, % sólidos) se dejan explícitamente vacíos
+                    # (None) para que el operador los digite manualmente tras el análisis en el laboratorio.
                     assay_instance = Assay(
                         sample=sample_obj,
                         date=entry_date,
@@ -353,7 +348,7 @@ class AssaySyncService:
                         n5ech5=AssayTransformer.parse_int(entry.get("n5ech5")),
                         n6sc=AssayTransformer.parse_int(entry.get("n6sc") or entry.get("n6w_sc") or entry.get("n6kpsc") or entry.get("n6")),
                         n7ech7=AssayTransformer.parse_int(entry.get("n7ech7")),
-                        # Leyes calculadas del Courier
+                        # Leyes instrumentales del Courier (para comparación de calibración)
                         a1fe=a1fe_val,
                         a2cu=a2cu_val,
                         a3zn=a3zn_val,
@@ -361,12 +356,17 @@ class AssaySyncService:
                         a5a5=a5a5_val,
                         a6sol=a6sol_val,
                         a7a7=a7a7_val,
-                        # Campos visualizados en reporte de calibración (SamplingView.vue)
-                        pFe=p_fe_val,
-                        pCu=p_cu_val,
-                        pZn=p_zn_val,
-                        pMo=p_mo_val,
-                        pIns=p_ins_val,
+                        # Campos de laboratorio químico: vacíos (None) para llenado manual
+                        pFe=None,
+                        pCu=None,
+                        pZn=None,
+                        pMo=None,
+                        pIns=None,
+                        # Pesos de balanza y % sólidos: vacíos (None) para llenado manual
+                        pSol=None,
+                        tara=None,
+                        tweight=None,
+                        dweight=None,
                     )
 
                     # Añadimos la nueva instancia a la lista de inserción.

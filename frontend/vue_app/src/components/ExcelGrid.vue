@@ -44,6 +44,9 @@
           <!-- Botón para guardar todos los cambios -->
           <button class="btn btn-green btn-sm" @click="promptSave">Guardar Cambios</button>
         </template>
+
+        <!-- Slot para botones o acciones adicionales al final de la barra de herramientas -->
+        <slot name="actions-end" />
       </div>
     </div>
 

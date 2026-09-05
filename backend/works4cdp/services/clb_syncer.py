@@ -87,15 +87,15 @@ class CLBClient:
         session.mount("https://", adapter)
         return session
 
-    def fetch_tag_entries(self, tag: str) -> List[Dict[str, Any]]:
+    def fetch_tag_entries(self, tag: str, target_date: Optional[date] = None) -> List[Dict[str, Any]]:
         """
         Consulta las mediciones del archivo de texto para una etiqueta (tag) dada.
         Retorna la lista de registros o lista vacía si hay error o no hay datos.
         """
         # Si el modo DEV está activo, devolvemos datos simulados para no bloquear pruebas.
         if self.is_dev:
-            logger.info("Modo DEV activo: generando datos simulados para tag '%s'", tag)
-            return self._generate_mock_data(tag)
+            logger.info("Modo DEV activo: generando datos simulados para tag '%s' fecha '%s'", tag, target_date)
+            return self._generate_mock_data(tag, target_date=target_date)
 
         # Construimos la URL con el parámetro name=<tag>.
         url = f"{self.base_url}?name={tag}"
@@ -119,13 +119,14 @@ class CLBClient:
             # Filosofía Fail-Safe: retornamos lista vacía sin romper la ejecución.
             return []
 
-    def _generate_mock_data(self, tag: str) -> List[Dict[str, Any]]:
+    def _generate_mock_data(self, tag: str, target_date: Optional[date] = None) -> List[Dict[str, Any]]:
         """Genera lecturas sintéticas representativas para pruebas locales."""
-        # Obtenemos la fecha y hora actual para el mock.
+        # Usamos la fecha objetivo solicitada o la fecha actual por defecto.
+        effective_mock_date = target_date or datetime.now().date()
         now = datetime.now()
         return [
             {
-                "date": now.strftime("%d.%m.%Y"),
+                "date": effective_mock_date.strftime("%d.%m.%Y"),
                 "hour": now.strftime("%H:%M:%S"),
                 "instance": 1,
                 "n1fe": 1520,
@@ -289,12 +290,14 @@ class AssaySyncService:
         client = CLBClient(ip=ip)
         # Lista donde acumularemos las nuevas instancias Assay a insertar en lote.
         new_assays: List[Assay] = []
+        # Contador para validar explícitamente cuántos registros existen en la API externa para esta fecha
+        total_found_in_api = 0
 
         try:
             # Iteramos cada muestra del equipo.
             for tag, sample_obj in sample_map.items():
-                # Obtenemos los registros del archivo plano del Courier vía API.
-                raw_entries = client.fetch_tag_entries(tag)
+                # Obtenemos los registros del archivo plano del Courier vía API para la fecha solicitada.
+                raw_entries = client.fetch_tag_entries(tag, target_date=effective_date)
                 # Si el archivo está vacío o falló, continuamos de forma segura (Fail-Safe).
                 if not raw_entries:
                     continue
@@ -306,6 +309,9 @@ class AssaySyncService:
                     # Filtramos: Solo procesamos registros que coincidan exactamente con la fecha objetivo.
                     if not entry_date or entry_date != effective_date:
                         continue
+
+                    # Contabilizamos la existencia de lecturas en la API para esta fecha
+                    total_found_in_api += 1
 
                     # Parseamos la hora y la instancia.
                     entry_time = AssayTransformer.parse_time(entry.get("hour"))
@@ -331,9 +337,6 @@ class AssaySyncService:
                     ts_val = AssayTransformer.build_timestamp(entry_date, entry_time)
 
                     # Instanciamos el modelo Assay con solo las lecturas instrumentales del Courier.
-                    # NOTA OPERATIVA: Las columnas de resultados de laboratorio químico (%Fe, %Cu, %Zn, %Mo, %Ins)
-                    # y los pesos de balanza (tara, peso total, peso seco, % sólidos) se dejan explícitamente vacíos
-                    # (None) para que el operador los digite manualmente tras el análisis en el laboratorio.
                     assay_instance = Assay(
                         sample=sample_obj,
                         date=entry_date,
@@ -381,9 +384,21 @@ class AssaySyncService:
                     Assay.objects.bulk_create(new_assays)
                 logger.info("Se insertaron exitosamente %d nuevos ensayos para equipo %s", len(new_assays), equipment_id)
 
+            # Generamos mensaje explícito según el resultado de la validación en la API
+            formatted_date = effective_date.strftime("%Y-%m-%d")
+            if total_found_in_api == 0:
+                result_msg = f"No se encontraron lecturas en la API del Courier ({ip}) para la fecha {formatted_date}."
+            elif len(new_assays) == 0:
+                result_msg = f"Se verificaron {total_found_in_api} registro(s) en la API del Courier para la fecha {formatted_date}. Todos ya se encontraban registrados en la base de datos."
+            else:
+                result_msg = f"Sincronización exitosa: Se encontraron {total_found_in_api} registro(s) en la API y se insertaron {len(new_assays)} nuevo(s) en la base de datos."
+
             return {
                 "status": "ok",
-                "message": f"Sincronización finalizada. Nuevos registros: {len(new_assays)}",
+                "message": result_msg,
+                "date": formatted_date,
+                "equipment_id": equipment_id,
+                "found_in_api": total_found_in_api,
                 "inserted": len(new_assays),
             }
 

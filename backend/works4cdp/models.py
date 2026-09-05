@@ -79,7 +79,10 @@ class Task(models.Model):
         ordering = ['-id']
     
     def __str__(self):
-        return self.name
+        # Retornamos el nombre del catálogo maestro asociado si existe, o el ID como respaldo
+        if self.task_catalog:
+            return self.task_catalog.name
+        return f"Tarea #{self.id}"
 
 # Modelo para definir roles o Grupos Personalizados para los usuarios
 class UserP(models.Model):

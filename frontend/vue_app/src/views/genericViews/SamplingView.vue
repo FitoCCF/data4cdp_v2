@@ -34,17 +34,6 @@
                   {{ eq.label }}
                 </option>
               </select>
-              <!-- Botón manual para sincronizar o forzar lectura del Courier a demanda -->
-              <button
-                v-if="selectedEquipment"
-                type="button"
-                class="sync-courier-btn"
-                title="Forzar lectura y sincronización con el analizador Courier"
-                :disabled="loading"
-                @click="loadAssays(true)"
-              >
-                🔄 Sincronizar Courier
-              </button>
             </div>
           </td>
           <td class="code-cell">
@@ -144,7 +133,20 @@
           :rowCalculator="calculateSamplingRow"
           @save="handleSave"
           @delete="handleDelete"
-        />
+        >
+          <!-- Botón para sincronizar manualmente con la API del Courier a la altura de 'Habilitar Edición' al final -->
+          <template #actions-end>
+            <button
+              type="button"
+              class="sync-courier-btn"
+              :disabled="loading || isSyncing || !selectedEquipment"
+              title="Consultar y sincronizar con la API del analizador Courier para la fecha y equipo seleccionados"
+              @click="handleManualSync"
+            >
+              {{ isSyncing ? '⏳ Verificando API...' : '🔄 Sincronizar API Courier' }}
+            </button>
+          </template>
+        </ExcelGrid>
       </div>
     </div>
   </section>
@@ -384,8 +386,11 @@ const updateHeaderFieldsFromAssays = () => {
   }
 };
 
-// Carga los ensayos de la base de datos aplicando la fecha seleccionada para evitar límites de paginación
-const loadAssays = async (forceSync = false) => {
+// Variable reactiva para controlar el estado de sincronización manual con la API
+const isSyncing = ref(false);
+
+// Carga los ensayos EXCLUSIVAMENTE desde la base de datos local aplicando la fecha y equipo seleccionados
+const loadAssays = async () => {
   // Si no hay un equipo seleccionado en la parte superior, limpiamos los datos y evitamos la consulta
   if (!selectedEquipment.value) {
     assays.value = [];
@@ -395,7 +400,7 @@ const loadAssays = async (forceSync = false) => {
   }
 
   await execute(async () => {
-    // Parámetros para filtrar ensayos por fecha y equipo en la base de datos
+    // Parámetros para filtrar ensayos por fecha y equipo en la base de datos local
     const params = {
       page_size: 10000 // Tamaño de página grande para recuperar todos los registros diarios
     };
@@ -406,45 +411,61 @@ const loadAssays = async (forceSync = false) => {
       params.sample__equipment = selectedEquipment.value;
     }
 
-    // 1. Primero consultamos qué registros ya existen en la base de datos local
-    let res = await api.get('assays/', { params });
-    let currentAssays = res.data.results || res.data || [];
-
-    // CONDICIÓN INTELIGENTE DE SINCRONIZACIÓN:
-    // Sincronizamos con el Courier si:
-    // a) El usuario hace clic en el botón 'Sincronizar Courier' (forceSync === true)
-    // b) O no hay ningún ensayo en la base de datos para esta fecha y equipo (currentAssays.length === 0)
-    // c) O la fecha seleccionada es hoy o futura (para capturar nuevas muestras en vivo)
-    const todayStr = new Date().toISOString().split('T')[0];
-    const isTodayOrFuture = selectedDate.value >= todayStr;
-    const shouldSync = forceSync || currentAssays.length === 0 || isTodayOrFuture;
-
-    if (shouldSync) {
-      try {
-        // Petición al backend para sincronizar el analizador seleccionado para la fecha indicada
-        const syncRes = await api.post('assays/sync-equipment/', {
-          equipment_id: selectedEquipment.value,
-          date: selectedDate.value
-        });
-
-        // Si se insertaron registros nuevos o la tabla estaba vacía en BD, refrescamos la consulta local
-        if (syncRes.data?.inserted > 0 || currentAssays.length === 0) {
-          res = await api.get('assays/', { params });
-          currentAssays = res.data.results || res.data || [];
-        }
-      } catch (syncErr) {
-        // Filosofía Fail-Safe: si el Courier está fuera de línea o la red OT falla,
-        // no rompemos la pantalla y mostramos los datos locales que ya existan en la BD.
-        console.warn('Courier no disponible o sin respuesta:', syncErr);
-      }
-    }
-
-    // Actualizamos el estado reactivo con los ensayos finales
-    assays.value = currentAssays;
+    // CONSULTA ESTRICTA Y EXCLUSIVAMENTE A LA BASE DE DATOS LOCAL (PostgreSQL/TimescaleDB)
+    const res = await api.get('assays/', { params });
+    assays.value = res.data.results || res.data || [];
 
     // Llamamos a la pre-población y configuración de operadores en base a los ensayos cargados
     updateHeaderFieldsFromAssays();
-  }, 'Error al cargar los ensayos del servidor.');
+  }, 'Error al cargar los ensayos desde la base de datos.');
+};
+
+// Sincronización MANUAL con la API externa del analizador Courier activada únicamente mediante el botón
+const handleManualSync = async () => {
+  // 1. Validamos que se haya seleccionado un equipo Courier
+  if (!selectedEquipment.value) {
+    alert('Por favor, selecciona primero un equipo Courier para consultar y sincronizar su API.');
+    return;
+  }
+
+  // 2. Validamos que se haya seleccionado una fecha
+  if (!selectedDate.value) {
+    alert('Por favor, selecciona una fecha para verificar los datos en la API.');
+    return;
+  }
+
+  isSyncing.value = true;
+  try {
+    // Petición al endpoint backend que verifica la existencia de datos en la API del Courier para la fecha y equipo
+    const syncRes = await api.post('assays/sync-equipment/', {
+      equipment_id: selectedEquipment.value,
+      date: selectedDate.value
+    });
+
+    const data = syncRes.data || {};
+
+    // Notificación explícita de validación de datos en la API
+    if (data.status === 'ok') {
+      if (data.found_in_api === 0) {
+        alert(`ℹ️ Verificación en API: No existen datos registrados en la API del Courier para la fecha ${selectedDate.value}.`);
+      } else if (data.inserted > 0) {
+        alert(`✅ Sincronización exitosa: Se encontraron ${data.found_in_api} registro(s) en la API y se insertaron ${data.inserted} nuevo(s) en la base de datos.`);
+      } else {
+        alert(`ℹ️ Verificación en API: Se encontraron ${data.found_in_api} registro(s) en la API para la fecha ${selectedDate.value}. Todos ya se encontraban registrados en la base de datos.`);
+      }
+    } else {
+      alert(`⚠️ Aviso: ${data.message || 'No se pudo completar la sincronización con el analizador.'}`);
+    }
+
+    // Tras la sincronización con la API, recargamos los ensayos actualizados desde la base de datos local
+    await loadAssays();
+  } catch (syncErr) {
+    console.error('Error al sincronizar con la API Courier:', syncErr);
+    const errorDetail = syncErr.response?.data?.error || syncErr.message || 'Error de conexión con el analizador Courier.';
+    alert(`❌ Error al conectar con la API: ${errorDetail}`);
+  } finally {
+    isSyncing.value = false;
+  }
 };
 
 // Carga los datos de catálogos iniciales para los filtros y selects del reporte
@@ -686,25 +707,30 @@ onMounted(() => {
   min-width: 250px;
 }
 .sync-courier-btn {
-  padding: 5px 12px;
-  background-color: #d32f2f;
+  padding: 4px 10px;
+  background-color: #1976d2;
   color: #fff;
-  border: 1px solid #b71c1c;
+  border: 1px solid #1565c0;
   border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 .sync-courier-btn:hover:not(:disabled) {
-  background-color: #b71c1c;
+  background-color: #1565c0;
 }
 .sync-courier-btn:disabled {
   background-color: #e0e0e0;
   color: #9e9e9e;
   border-color: #bdbdbd;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 .code-cell {

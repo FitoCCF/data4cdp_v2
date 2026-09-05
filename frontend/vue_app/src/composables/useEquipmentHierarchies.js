@@ -8,6 +8,9 @@ import { api } from '../api';
  */
 export function useEquipmentHierarchies() {
     const equipmentsList = ref([]);
+    const systemsList = ref([]);
+    const areasList = ref([]);
+    const plantsList = ref([]);
     const systemsMap = ref({});
     const areasMap = ref({});
     const plantsMap = ref({});
@@ -24,10 +27,14 @@ export function useEquipmentHierarchies() {
                 api.get('equipments/', { params: { page_size: 10000 } })
             ]);
 
-            systemsMap.value = extractData(sysRes).reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
-            areasMap.value = extractData(areaRes).reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
-            plantsMap.value = extractData(plantRes).reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
+            systemsList.value = extractData(sysRes);
+            areasList.value = extractData(areaRes);
+            plantsList.value = extractData(plantRes);
             equipmentsList.value = extractData(eqRes);
+
+            systemsMap.value = systemsList.value.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
+            areasMap.value = areasList.value.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
+            plantsMap.value = plantsList.value.reduce((acc, item) => ({ ...acc, [item.id]: item }), {});
         } catch (err) {
             console.error('Error al cargar jerarquías de equipos:', err);
         }
@@ -150,5 +157,16 @@ export function useEquipmentHierarchies() {
         return params;
     };
 
-    return { equipmentsList, loadDependencies, getEquipmentHierarchyRow, buildFilterParams };
+    return {
+        equipmentsList,
+        plantsList,
+        areasList,
+        systemsList,
+        plantsMap,
+        areasMap,
+        systemsMap,
+        loadDependencies,
+        getEquipmentHierarchyRow,
+        buildFilterParams
+    };
 }

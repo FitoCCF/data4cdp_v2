@@ -18,6 +18,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/cyrus-sasl-2.1.28-hac629b4_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/django-6.1-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/django-cors-headers-4.9.0-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/django-filter-26.1-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/djangorestframework-3.18.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/h2-4.4.1-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/hpack-4.2.0-pyhd8ed1ab_0.conda
@@ -179,6 +180,17 @@ packages:
   license_family: MIT
   size: 17993
   timestamp: 1758205476679
+- conda: https://conda.anaconda.org/conda-forge/noarch/django-filter-26.1-pyhc364b38_0.conda
+  sha256: 54b12b803bccb0cdc2cdf0b80ae355503075e79db964d6589b5ed89f93d9796b
+  md5: 93a6e66eaf6351544126980ec317807f
+  depends:
+  - python >=3.10
+  - django >=5.2
+  - python
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 59275
+  timestamp: 1783860348479
 - conda: https://conda.anaconda.org/conda-forge/noarch/djangorestframework-3.18.0-pyhd8ed1ab_0.conda
   sha256: b2173612d47fddf239c0d22487e54c997810bfd85e87d8979e98efe24b5c2c4f
   md5: b3c36d28cc66be07c899da9e7173e5d5

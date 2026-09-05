@@ -10,3 +10,6 @@ graphify-out/
 # pixi environments
 .pixi/*
 !.pixi/config.toml
+.agents/
+database.tar.gz
+*.tar.gz

@@ -926,4 +926,23 @@ onMounted(() => { initGrid(); });
   border-right: 8px solid transparent;
   z-index: 10;
 }
+
+/* Ocultar barra superior, botones y modales al imprimir */
+@media print {
+  .toolbar,
+  .modal-overlay,
+  .filter-menu,
+  .resizer {
+    display: none !important;
+  }
+  .excel-container {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    background: transparent !important;
+  }
+  .table-wrapper {
+    overflow: visible !important;
+  }
+}
 </style>

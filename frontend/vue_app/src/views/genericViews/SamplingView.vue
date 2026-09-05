@@ -37,111 +37,117 @@
     <div class="report-wrapper">
       <!-- Tabla que estructura la cabecera oficial del reporte exactamente según formato CON-PSG-CPR-FM.005 -->
       <table class="report-table">
-        <!-- Filas 1 a 4 del Excel: Logo corporativo, Título con Equipo y Código de control -->
-        <tr class="row-header-top">
-          <td class="logo-cell">
-            <div class="logo-container">
-              <img :src="logoSouthern" alt="Grupo México Southern Perú" class="corporate-logo" />
-            </div>
-          </td>
-          <td class="title-cell">
-            <div class="title-text">FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER</div>
-            <!-- Muestra el equipo en mayúsculas como en la hoja de Excel -->
-            <div class="selected-equipment-title">
-              {{ selectedEquipmentLabel ? selectedEquipmentLabel.toUpperCase() : 'COURIER COBRE C2' }}
-            </div>
-            <div class="equipment-select-container screen-only">
-              <!-- Selector para filtrar datos por equipo y cargar opciones dinámicamente -->
-              <select v-model="selectedEquipment" class="header-select red-box-style">
-                <option value="">-- Seleccionar Equipo --</option>
-                <option v-for="eq in equipmentOptions" :key="eq.id" :value="eq.id">
-                  {{ eq.label }}
-                </option>
-              </select>
-            </div>
-          </td>
-          <td class="code-cell">
-            <div class="code-box">
-              <div class="code-line"><span class="code-label">Código:</span> CON-PSG-CPR-FM.005</div>
-              <div class="code-line"><span class="code-label">Versión:</span> 02</div>
-              <div class="code-line"><span class="code-label">Página:</span> 1 de 1</div>
-            </div>
-          </td>
-        </tr>
+        <tbody>
+          <!-- Filas 1 a 4 del Excel: Logo corporativo, Título con Equipo y Código de control -->
+          <tr class="row-header-top">
+            <td class="logo-cell">
+              <div class="logo-container">
+                <img :src="logoSouthern" alt="Grupo México Southern Perú" class="corporate-logo" />
+              </div>
+            </td>
+            <td class="title-cell">
+              <div class="title-text">FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER</div>
+              <!-- Muestra el equipo en mayúsculas como en la hoja de Excel -->
+              <div class="selected-equipment-title">
+                {{ selectedEquipmentLabel ? selectedEquipmentLabel.toUpperCase() : 'COURIER COBRE C2' }}
+              </div>
+              <div class="equipment-select-container screen-only">
+                <!-- Selector para filtrar datos por equipo y cargar opciones dinámicamente -->
+                <select v-model="selectedEquipment" class="header-select red-box-style">
+                  <option value="">-- Seleccionar Equipo --</option>
+                  <option v-for="eq in equipmentOptions" :key="eq.id" :value="eq.id">
+                    {{ eq.label }}
+                  </option>
+                </select>
+              </div>
+            </td>
+            <td class="code-cell">
+              <div class="code-box">
+                <div class="code-line"><span class="code-label">Código:</span> CON-PSG-CPR-FM.005</div>
+                <div class="code-line"><span class="code-label">Versión:</span> 02</div>
+                <div class="code-line"><span class="code-label">Página:</span> 1 de 1</div>
+              </div>
+            </td>
+          </tr>
 
-        <!-- Fila 5 del Excel: Unidad minera fija -->
-        <tr class="row-unidad-minera">
-          <td colspan="3" class="full-width-cell">
-            <div class="flex-row-header">
-              <span class="label-header">UNIDAD MINERA:</span>
-              <span class="value-header">Toquepala</span>
-            </div>
-          </td>
-        </tr>
+          <!-- Fila 5 del Excel: Unidad minera fija -->
+          <tr class="row-unidad-minera">
+            <td colspan="3" class="full-width-cell">
+              <div class="flex-row-header">
+                <span class="label-header">UNIDAD MINERA:</span>
+                <span class="value-header">Toquepala</span>
+              </div>
+            </td>
+          </tr>
 
-        <!-- Fila 6 del Excel: Gerencia y Área fijas -->
-        <tr class="row-gerencia-area">
-          <td colspan="3" class="no-padding-cell">
-            <table class="inner-table">
-              <tr>
-                <td class="label-cell">GERENCIA:</td>
-                <td class="value-cell">Concentradora</td>
-                <td class="label-cell">DEPARTAMENTO / ÁREA:</td>
-                <td class="value-cell">Control de Procesos</td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+          <!-- Fila 6 del Excel: Gerencia y Área fijas -->
+          <tr class="row-gerencia-area">
+            <td colspan="3" class="no-padding-cell">
+              <table class="inner-table">
+                <tbody>
+                  <tr>
+                    <td class="label-cell">GERENCIA:</td>
+                    <td class="value-cell">Concentradora</td>
+                    <td class="label-cell">DEPARTAMENTO / ÁREA:</td>
+                    <td class="value-cell">Control de Procesos</td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
 
-        <!-- Filas 8 a 10 del Excel: Datos variables del reporte (Fecha, Enviado Por, Operador) y Logo Control de Procesos -->
-        <tr class="row-meta-section">
-          <td colspan="3" class="no-padding-cell">
-            <table class="inner-table meta-table">
-              <tr>
-                <td class="label-cell-wide">FECHA DE MUESTREO:</td>
-                <td class="input-cell">
-                  <!-- Pantalla: Selector interactivo de fecha -->
-                  <input type="date" v-model="selectedDate" class="date-input screen-only" />
-                  <!-- Impresión: Texto limpio formateado -->
-                  <span class="print-only value-text">{{ formatDateDisplay(selectedDate) }}</span>
-                </td>
-                <td rowspan="3" class="right-logo-cell">
-                  <div class="logo-container right-logo-container">
-                    <img :src="logoControl" alt="Control de Procesos 2025" class="department-logo" />
-                  </div>
-                </td>
-              </tr>
-              <tr>
-                <td class="label-cell-wide">ENVIADO POR:</td>
-                <td class="input-cell">
-                  <!-- Pantalla: Selector del usuario -->
-                  <select v-model="selectedUser" class="header-select red-text-style screen-only">
-                    <option value="">-- Seleccionar --</option>
-                    <option v-for="u in userOptions" :key="u.id" :value="u.id">
-                      {{ u.nombre }} {{ u.apellido }}
-                    </option>
-                  </select>
-                  <!-- Impresión: Nombre en texto rojo oficial -->
-                  <span class="print-only value-text red-text-style">{{ selectedUserName || '-' }}</span>
-                </td>
-              </tr>
-              <tr>
-                <td class="label-cell-wide">OPERADOR DE METALURGIA:</td>
-                <td class="input-cell">
-                  <!-- Pantalla: Selector de operador metalúrgico -->
-                  <select v-model="selectedMetaUser" class="header-select screen-only">
-                    <option value="">-- Seleccionar --</option>
-                    <option v-for="mu in metaUserOptions" :key="mu" :value="mu">
-                      {{ mu }}
-                    </option>
-                  </select>
-                  <!-- Impresión: Texto de operador limpio -->
-                  <span class="print-only value-text">{{ selectedMetaUser || '-' }}</span>
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
+          <!-- Filas 8 a 10 del Excel: Datos variables del reporte (Fecha, Enviado Por, Operador) y Logo Control de Procesos -->
+          <tr class="row-meta-section">
+            <td colspan="3" class="no-padding-cell">
+              <table class="inner-table meta-table">
+                <tbody>
+                  <tr>
+                    <td class="label-cell-wide">FECHA DE MUESTREO:</td>
+                    <td class="input-cell">
+                      <!-- Pantalla: Selector interactivo de fecha -->
+                      <input type="date" v-model="selectedDate" class="date-input screen-only" />
+                      <!-- Impresión: Texto limpio formateado -->
+                      <span class="print-only value-text">{{ formatDateDisplay(selectedDate) }}</span>
+                    </td>
+                    <td rowspan="3" class="right-logo-cell">
+                      <div class="logo-container right-logo-container">
+                        <img :src="logoControl" alt="Control de Procesos 2025" class="department-logo" />
+                      </div>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="label-cell-wide">ENVIADO POR:</td>
+                    <td class="input-cell">
+                      <!-- Pantalla: Selector del usuario -->
+                      <select v-model="selectedUser" class="header-select red-text-style screen-only">
+                        <option value="">-- Seleccionar --</option>
+                        <option v-for="u in userOptions" :key="u.id" :value="u.id">
+                          {{ u.nombre }} {{ u.apellido }}
+                        </option>
+                      </select>
+                      <!-- Impresión: Nombre en texto rojo oficial -->
+                      <span class="print-only value-text red-text-style">{{ selectedUserName || '-' }}</span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td class="label-cell-wide">OPERADOR DE METALURGIA:</td>
+                    <td class="input-cell">
+                      <!-- Pantalla: Selector de operador metalúrgico -->
+                      <select v-model="selectedMetaUser" class="header-select screen-only">
+                        <option value="">-- Seleccionar --</option>
+                        <option v-for="mu in metaUserOptions" :key="mu" :value="mu">
+                          {{ mu }}
+                        </option>
+                      </select>
+                      <!-- Impresión: Texto de operador limpio -->
+                      <span class="print-only value-text">{{ selectedMetaUser || '-' }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </td>
+          </tr>
+        </tbody>
       </table>
 
       <!-- Mensajes de Carga y Errores del Servidor -->
@@ -182,8 +188,6 @@
 <script setup>
 // Importamos dependencias reactivas de Vue
 import { ref, computed, onMounted, watch } from 'vue';
-// Importamos SheetJS para exportación a Excel oficial
-import * as XLSX from 'xlsx';
 // Importamos logos corporativos extraídos del formato oficial
 import logoSouthern from '../../assets/courier_image3.png';
 import logoControl from '../../assets/courier_image2.png';
@@ -677,179 +681,444 @@ const printReport = () => {
   window.print();
 };
 
-// Exporta el reporte a Excel (.xlsx) replicando exactamente la estructura de la cabecera CON-PSG-CPR-FM.005
-// Excluye controles de edición, botones de sincronización e IDs internos de BD
+// --- Generador OpenXML (.xlsx) con estilos completos oficiales CON-PSG-CPR-FM.005 ---
+const crcTable = new Int32Array(256);
+for (let i = 0; i < 256; i++) {
+  let c = i;
+  for (let k = 0; k < 8; k++) {
+    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+  }
+  crcTable[i] = c;
+}
+
+const crc32Calc = (uint8Array) => {
+  let crc = -1;
+  for (let i = 0; i < uint8Array.length; i++) {
+    crc = (crc >>> 8) ^ crcTable[(crc ^ uint8Array[i]) & 0xFF];
+  }
+  return (crc ^ -1) >>> 0;
+};
+
+const concatUint8 = (arrays) => {
+  let totalLength = 0;
+  for (const arr of arrays) totalLength += arr.length;
+  const result = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const arr of arrays) {
+    result.set(arr, offset);
+    offset += arr.length;
+  }
+  return result;
+};
+
+const buildZipPackage = (files) => {
+  const encoder = new TextEncoder();
+  const fileParts = [];
+  const centralDirParts = [];
+  let offset = 0;
+
+  for (const file of files) {
+    const nameBytes = encoder.encode(file.name);
+    const dataBytes = (typeof file.data === 'string')
+      ? encoder.encode(file.data)
+      : file.data;
+
+    const crc = crc32Calc(dataBytes);
+    const size = dataBytes.length;
+
+    const localHeader = new Uint8Array(30 + nameBytes.length);
+    const localDv = new DataView(localHeader.buffer);
+    localDv.setUint32(0, 0x04034b50, true);
+    localDv.setUint16(4, 20, true);
+    localDv.setUint16(6, 0x0800, true);
+    localDv.setUint16(8, 0, true);
+    localDv.setUint16(10, 0, true);
+    localDv.setUint16(12, 0, true);
+    localDv.setUint32(14, crc, true);
+    localDv.setUint32(18, size, true);
+    localDv.setUint32(22, size, true);
+    localDv.setUint16(26, nameBytes.length, true);
+    localDv.setUint16(28, 0, true);
+    localHeader.set(nameBytes, 30);
+
+    fileParts.push(localHeader, dataBytes);
+
+    const cdHeader = new Uint8Array(46 + nameBytes.length);
+    const cdDv = new DataView(cdHeader.buffer);
+    cdDv.setUint32(0, 0x02014b50, true);
+    cdDv.setUint16(4, 20, true);
+    cdDv.setUint16(6, 20, true);
+    cdDv.setUint16(8, 0x0800, true);
+    cdDv.setUint16(10, 0, true);
+    cdDv.setUint16(12, 0, true);
+    cdDv.setUint16(14, 0, true);
+    cdDv.setUint32(16, crc, true);
+    cdDv.setUint32(20, size, true);
+    cdDv.setUint32(24, size, true);
+    cdDv.setUint16(28, nameBytes.length, true);
+    cdDv.setUint16(30, 0, true);
+    cdDv.setUint16(32, 0, true);
+    cdDv.setUint16(34, 0, true);
+    cdDv.setUint16(36, 0, true);
+    cdDv.setUint32(38, 0, true);
+    cdDv.setUint32(42, offset, true);
+    cdHeader.set(nameBytes, 46);
+
+    centralDirParts.push(cdHeader);
+    offset += localHeader.length + dataBytes.length;
+  }
+
+  const centralDirBytes = concatUint8(centralDirParts);
+  const cdOffset = offset;
+  const cdSize = centralDirBytes.length;
+
+  const eocd = new Uint8Array(22);
+  const eocdDv = new DataView(eocd.buffer);
+  eocdDv.setUint32(0, 0x06054b50, true);
+  eocdDv.setUint16(4, 0, true);
+  eocdDv.setUint16(6, 0, true);
+  eocdDv.setUint16(8, files.length, true);
+  eocdDv.setUint16(10, files.length, true);
+  eocdDv.setUint32(12, cdSize, true);
+  eocdDv.setUint32(16, cdOffset, true);
+  eocdDv.setUint16(20, 0, true);
+
+  return concatUint8([...fileParts, centralDirBytes, eocd]);
+};
+
+const xmlEscape = (str) => {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+};
+
+const colIndexToLetter = (colIndex) => {
+  let temp = colIndex + 1;
+  let letter = '';
+  while (temp > 0) {
+    let mod = (temp - 1) % 26;
+    letter = String.fromCharCode(65 + mod) + letter;
+    temp = Math.floor((temp - mod) / 26);
+  }
+  return letter;
+};
+
+// Exporta el reporte a Excel (.xlsx) con los estilos y formatos oficiales CON-PSG-CPR-FM.005 completos
+// Conserva bordes negros finos, rellenos verde claro (#E2EFDA) y gris (#D9D9D9), texto rojo, azul y números formateados
 const exportToExcel = () => {
   if (!gridData.value || gridData.value.length === 0) {
     alert('No hay datos disponibles para exportar.');
     return;
   }
 
-  const wsData = [];
   const eqName = selectedEquipmentLabel.value ? selectedEquipmentLabel.value.toUpperCase() : 'COURIER COBRE C2';
+  const displayDate = formatDateDisplay(selectedDate.value) || selectedDate.value || '';
+  const currentUserName = selectedUserName.value || '';
+  const metaUserName = selectedMetaUser.value || '';
 
-  // Fila 1 a 4 del Excel: Cabecera principal (Título, Logos y Control)
-  wsData.push([
-    'Grupo México\nSouthern Perú', '',
-    `FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER\n${eqName}`, '', '', '', '', '', '', '', '',
-    'Código: CON-PSG-CPR-FM.005\nVersión: 02\nPágina: 1 de 1', '', ''
-  ]);
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  const contentTypes = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+    '<Default Extension="xml" ContentType="application/xml"/>' +
+    '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>' +
+    '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>' +
+    '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>' +
+    '</Types>';
+
+  const rels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>' +
+    '</Relationships>';
+
+  const workbookRels = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+    '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>' +
+    '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>' +
+    '</Relationships>';
+
+  const workbookXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">' +
+    '<sheets><sheet name="C1_COURIER_NORTE" sheetId="1" r:id="rId1"/></sheets>' +
+    '</workbook>';
+
+  const stylesXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<numFmts count="1"><numFmt numFmtId="164" formatCode="0.00"/></numFmts>' +
+    '<fonts count="9">' +
+    '<font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/></font>' +                  // 0: normal
+    '<font><sz val="11"/><color rgb="FF000000"/><name val="Arial"/><b/></font>' +             // 1: title bold
+    '<font><sz val="9.5"/><color rgb="FF000000"/><name val="Arial"/><b/></font>' +            // 2: code box bold
+    '<font><sz val="10"/><color rgb="FF000000"/><name val="Arial"/><b/></font>' +             // 3: label bold
+    '<font><sz val="10"/><color rgb="FFFF0000"/><name val="Arial"/><b/></font>' +             // 4: user RED bold
+    '<font><sz val="9"/><color rgb="FF000000"/><name val="Arial"/><b/></font>' +              // 5: table header bold
+    '<font><sz val="9"/><color rgb="FF000000"/><name val="Arial"/></font>' +                  // 6: table data normal
+    '<font><sz val="9"/><color rgb="FF0056B3"/><name val="Arial"/><b/></font>' +             // 7: code/id/hora blue
+    '<font><sz val="10"/><color rgb="FF1976D2"/><name val="Arial"/><b/></font>' +            // 8: right logo blue
+    '</fonts>' +
+    '<fills count="4">' +
+    '<fill><patternFill patternType="none"/></fill>' +
+    '<fill><patternFill patternType="gray125"/></fill>' +
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFE2EFDA"/></patternFill></fill>' +  // 2: Header Green (#E2EFDA)
+    '<fill><patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/></patternFill></fill>' +  // 3: Header Gray (#D9D9D9)
+    '</fills>' +
+    '<borders count="2">' +
+    '<border><left/><right/><top/><bottom/></border>' +
+    '<border>' +
+    '<left style="thin"><color rgb="FF000000"/></left>' +
+    '<right style="thin"><color rgb="FF000000"/></right>' +
+    '<top style="thin"><color rgb="FF000000"/></top>' +
+    '<bottom style="thin"><color rgb="FF000000"/></bottom>' +
+    '</border>' +
+    '</borders>' +
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>' +
+    '<cellXfs count="13">' +
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>' +                                                                             // 0: Default
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' + // 1: Title
+    '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center" wrapText="1"/></xf>' +   // 2: Code Box
+    '<xf numFmtId="0" fontId="3" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +                  // 3: Label Bold
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +                // 4: Value Center
+    '<xf numFmtId="0" fontId="4" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="left" vertical="center"/></xf>' +                  // 5: Value Red
+    '<xf numFmtId="0" fontId="8" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' + // 6: Right Logo
+    '<xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' + // 7: Group Header Gray
+    '<xf numFmtId="0" fontId="5" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>' + // 8: Table Header Green
+    '<xf numFmtId="0" fontId="6" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +                // 9: Data Normal
+    '<xf numFmtId="0" fontId="7" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +                // 10: Data Blue (Codigo, ID, Hora)
+    '<xf numFmtId="0" fontId="5" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' +                // 11: Data Bold (SN)
+    '<xf numFmtId="164" fontId="6" fillId="0" borderId="1" xfId="0" applyNumberFormat="1" applyFont="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>' + // 12: Data Number 0.00
+    '</cellXfs>' +
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>' +
+    '</styleSheet>';
+
+  let sheetXml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>' +
+    '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">' +
+    '<sheetViews><sheetView workbookViewId="0"/></sheetViews>' +
+    '<cols>' +
+    '<col min="1" max="1" width="12" customWidth="1"/>' +
+    '<col min="2" max="2" width="32" customWidth="1"/>' +
+    '<col min="3" max="3" width="12" customWidth="1"/>' +
+    '<col min="4" max="4" width="10" customWidth="1"/>' +
+    '<col min="5" max="5" width="10" customWidth="1"/>' +
+    '<col min="6" max="6" width="11" customWidth="1"/>' +
+    '<col min="7" max="7" width="12" customWidth="1"/>' +
+    '<col min="8" max="8" width="12" customWidth="1"/>' +
+    '<col min="9" max="9" width="12" customWidth="1"/>' +
+    '<col min="10" max="10" width="10" customWidth="1"/>' +
+    '<col min="11" max="11" width="10" customWidth="1"/>' +
+    '<col min="12" max="12" width="10" customWidth="1"/>' +
+    '<col min="13" max="13" width="10" customWidth="1"/>' +
+    '<col min="14" max="14" width="10" customWidth="1"/>' +
+    '</cols>' +
+    '<sheetData>';
+
+  const renderCellXml = (col, row, styleId, value, type = 'string') => {
+    const ref = colIndexToLetter(col) + row;
+    if (value === null || value === undefined || value === '') {
+      return '<c r="' + ref + '" s="' + styleId + '"/>';
+    }
+    if (type === 'number') {
+      const num = (typeof value === 'number') ? value : parseFloat(String(value).replace(',', '.'));
+      if (!isNaN(num)) {
+        return '<c r="' + ref + '" s="' + styleId + '"><v>' + num + '</v></c>';
+      }
+    }
+    return '<c r="' + ref + '" s="' + styleId + '" t="inlineStr"><is><t>' + xmlEscape(value) + '</t></is></c>';
+  };
+
+  // Filas 1 a 4: Bloque de Cabecera Superior
+  const titleText = 'FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER\n' + eqName;
+  const codeText = 'Código: CON-PSG-CPR-FM.005\nVersión: 02\nPágina: 1 de 1';
+  const logoText = 'Grupo México\nSouthern Perú';
+
+  for (let r = 1; r <= 4; r++) {
+    sheetXml += '<row r="' + r + '" ht="20" customHeight="1">';
+    for (let c = 0; c < 14; c++) {
+      let val = null;
+      let s = 1;
+      if (c <= 1) { s = 1; if (r === 1 && c === 0) val = logoText; }
+      else if (c <= 10) { s = 1; if (r === 1 && c === 2) val = titleText; }
+      else { s = 2; if (r === 1 && c === 11) val = codeText; }
+      sheetXml += renderCellXml(c, r, s, val);
+    }
+    sheetXml += '</row>';
+  }
 
   // Fila 5: Unidad Minera
-  wsData.push(['UNIDAD MINERA:', '', 'Toquepala', '', '', '', '', '', '', '', '', '', '', '']);
+  sheetXml += '<row r="5" ht="22" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    let s = (c <= 1) ? 3 : 4;
+    let val = (c === 0) ? 'UNIDAD MINERA:' : (c === 2 ? 'Toquepala' : null);
+    sheetXml += renderCellXml(c, 5, s, val);
+  }
+  sheetXml += '</row>';
 
-  // Fila 6: Gerencia y Área
-  wsData.push([
-    'GERENCIA:', '', 'Concentradora', '', '', '', '', '',
-    'DEPARTAMENTO / ÁREA:', '', '', 'Control de Procesos', '', ''
-  ]);
+  // Fila 6: Gerencia y Departamento / Área
+  sheetXml += '<row r="6" ht="22" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    let s = 4;
+    let val = null;
+    if (c <= 1) { s = 3; if (c === 0) val = 'GERENCIA:'; }
+    else if (c <= 7) { s = 4; if (c === 2) val = 'Concentradora'; }
+    else if (c <= 10) { s = 3; if (c === 8) val = 'DEPARTAMENTO / ÁREA:'; }
+    else { s = 4; if (c === 11) val = 'Control de Procesos'; }
+    sheetXml += renderCellXml(c, 6, s, val);
+  }
+  sheetXml += '</row>';
 
   // Fila 7: Espaciador
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  sheetXml += '<row r="7" ht="10" customHeight="1"><c r="A7"/></row>';
 
-  // Fila 8: Fecha de Muestreo y Logo derecho
-  const displayDate = formatDateDisplay(selectedDate.value) || selectedDate.value;
-  wsData.push([
-    'FECHA DE MUESTREO:', '', displayDate, '', '', '', '', '',
-    '', '', '', '', 'Control de Procesos\n2025', ''
-  ]);
+  // Fila 8: Fecha de Muestreo y Logo Derecho
+  sheetXml += '<row r="8" ht="24" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    let s = 4;
+    let val = null;
+    if (c <= 1) { s = 3; if (c === 0) val = 'FECHA DE MUESTREO:'; }
+    else if (c <= 6) { s = 4; if (c === 2) val = displayDate; }
+    else if (c >= 12) { s = 6; if (c === 12) val = 'Control de Procesos\n2025'; }
+    else { s = 0; }
+    sheetXml += renderCellXml(c, 8, s, val);
+  }
+  sheetXml += '</row>';
 
-  // Fila 9: Enviado Por
-  wsData.push([
-    'ENVIADO POR:', '', selectedUserName.value || '', '', '', '', '', '',
-    '', '', '', '', '', ''
-  ]);
+  // Fila 9: Enviado Por (Texto Rojo)
+  sheetXml += '<row r="9" ht="24" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    let s = 4;
+    let val = null;
+    if (c <= 1) { s = 3; if (c === 0) val = 'ENVIADO POR:'; }
+    else if (c <= 6) { s = 5; if (c === 2) val = currentUserName; }
+    else if (c >= 12) { s = 6; }
+    else { s = 0; }
+    sheetXml += renderCellXml(c, 9, s, val);
+  }
+  sheetXml += '</row>';
 
   // Fila 10: Operador de Metalurgia
-  wsData.push([
-    'OPERADOR DE METALURGIA:', '', selectedMetaUser.value || '', '', '', '', '', '',
-    '', '', '', '', '', ''
-  ]);
+  sheetXml += '<row r="10" ht="24" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    let s = 4;
+    let val = null;
+    if (c <= 1) { s = 3; if (c === 0) val = 'OPERADOR DE METALURGIA:'; }
+    else if (c <= 6) { s = 4; if (c === 2) val = metaUserName; }
+    else if (c >= 12) { s = 6; }
+    else { s = 0; }
+    sheetXml += renderCellXml(c, 10, s, val);
+  }
+  sheetXml += '</row>';
 
   // Filas 11 a 13: Espaciadores
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
-  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  sheetXml += '<row r="11" ht="10" customHeight="1"/>';
+  sheetXml += '<row r="12" ht="10" customHeight="1"/>';
+  sheetXml += '<row r="13" ht="10" customHeight="1"/>';
 
   // Fila 14: Grupo de Cabecera ELEMENTOS POR ANALIZAR (columnas J a N)
-  wsData.push([
-    '', '', '', '', '', '', '', '', '',
-    'ELEMENTOS POR ANALIZAR', '', '', '', ''
-  ]);
+  sheetXml += '<row r="14" ht="22" customHeight="1">';
+  for (let c = 9; c <= 13; c++) {
+    let val = (c === 9) ? 'ELEMENTOS POR ANALIZAR' : null;
+    sheetXml += renderCellXml(c, 14, 7, val);
+  }
+  sheetXml += '</row>';
 
-  // Fila 15: Cabeceras de Columnas del Formato Físico (sin ID DB)
-  wsData.push([
-    'CÓDIGO',
-    'MUESTRA',
-    'SN',
-    'ID',
-    'HORA',
-    'TARA',
-    'PESO TOTAL',
-    'PESO SECO',
-    '% SÓLIDOS',
-    '%Fe',
-    '%Cu',
-    '%Zn',
-    '%Mo',
-    '%Ins'
-  ]);
+  // Fila 15: Cabeceras Individuales (Verde Pastel)
+  const headerLabels = [
+    'CÓDIGO', 'MUESTRA', 'SN', 'ID', 'HORA',
+    'TARA', 'PESO TOTAL', 'PESO SECO', '% SÓLIDOS',
+    '%Fe', '%Cu', '%Zn', '%Mo', '%Ins'
+  ];
+  sheetXml += '<row r="15" ht="24" customHeight="1">';
+  for (let c = 0; c < 14; c++) {
+    sheetXml += renderCellXml(c, 15, 8, headerLabels[c]);
+  }
+  sheetXml += '</row>';
 
   // Filas 16+: Registros de datos del grid
+  let currentRow = 16;
   gridData.value.forEach(row => {
-    // row[0] es ID DB (interno), no se incluye en el reporte oficial
-    // row[2] es sampleId, lo convertimos al nombre legible de la muestra
+    sheetXml += '<row r="' + currentRow + '" ht="20" customHeight="1">';
+    // Col 0: CÓDIGO (azul)
+    sheetXml += renderCellXml(0, currentRow, 10, row[1]);
+    // Col 1: MUESTRA (texto legible de muestra)
     const sampleId = row[2];
     const sampleName = samplesById.value[sampleId]?.name || (sampleId ? String(sampleId) : '');
-
-    const parseNum = (val) => {
-      if (val === '' || val === null || val === undefined) return '';
-      const n = parseFloat(String(val).replace(',', '.'));
-      return isNaN(n) ? val : n;
-    };
-
-    wsData.push([
-      row[1] || '',           // Col 1: CÓDIGO
-      sampleName,             // Col 2: MUESTRA
-      row[3] || '',           // Col 3: SN
-      row[4] || '',           // Col 4: ID
-      row[5] || '',           // Col 5: HORA
-      parseNum(row[6]),       // Col 6: TARA
-      parseNum(row[7]),       // Col 7: PESO TOTAL
-      parseNum(row[8]),       // Col 8: PESO SECO
-      parseNum(row[9]),       // Col 9: % SÓLIDOS
-      parseNum(row[10]),      // Col 10: %Fe
-      parseNum(row[11]),      // Col 11: %Cu
-      parseNum(row[12]),      // Col 12: %Zn
-      parseNum(row[13]),      // Col 13: %Mo
-      parseNum(row[14])       // Col 14: %Ins
-    ]);
+    sheetXml += renderCellXml(1, currentRow, 9, sampleName);
+    // Col 2: SN (bold)
+    sheetXml += renderCellXml(2, currentRow, 11, row[3]);
+    // Col 3: ID (azul)
+    sheetXml += renderCellXml(3, currentRow, 10, row[4]);
+    // Col 4: HORA (azul)
+    sheetXml += renderCellXml(4, currentRow, 10, row[5]);
+    // Cols 5 a 13: Celdas Numéricas con formato 0.00
+    sheetXml += renderCellXml(5, currentRow, 12, row[6], 'number');
+    sheetXml += renderCellXml(6, currentRow, 12, row[7], 'number');
+    sheetXml += renderCellXml(7, currentRow, 12, row[8], 'number');
+    sheetXml += renderCellXml(8, currentRow, 12, row[9], 'number');
+    sheetXml += renderCellXml(9, currentRow, 12, row[10], 'number');
+    sheetXml += renderCellXml(10, currentRow, 12, row[11], 'number');
+    sheetXml += renderCellXml(11, currentRow, 12, row[12], 'number');
+    sheetXml += renderCellXml(12, currentRow, 12, row[13], 'number');
+    sheetXml += renderCellXml(13, currentRow, 12, row[14], 'number');
+    sheetXml += '</row>';
+    currentRow++;
   });
 
-  // Generamos la hoja de cálculo con SheetJS
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  sheetXml += '</sheetData>';
 
-  // Configuramos los rangos combinados exactamente como en el formato CON-PSG-CPR-FM.005
-  ws['!merges'] = [
-    // Bloque 1: A1:B4 (Logo corporativo)
-    { s: { r: 0, c: 0 }, e: { r: 3, c: 1 } },
-    // Bloque 2: C1:K4 (Título y Equipo)
-    { s: { r: 0, c: 2 }, e: { r: 3, c: 10 } },
-    // Bloque 3: L1:N4 (Código de control documental)
-    { s: { r: 0, c: 11 }, e: { r: 3, c: 13 } },
-    // Fila 5: UNIDAD MINERA
-    { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } },
-    { s: { r: 4, c: 2 }, e: { r: 4, c: 13 } },
-    // Fila 6: GERENCIA & ÁREA
-    { s: { r: 5, c: 0 }, e: { r: 5, c: 1 } },
-    { s: { r: 5, c: 2 }, e: { r: 5, c: 7 } },
-    { s: { r: 5, c: 8 }, e: { r: 5, c: 10 } },
-    { s: { r: 5, c: 11 }, e: { r: 5, c: 13 } },
-    // Filas 8-10: Metadatos
-    { s: { r: 7, c: 0 }, e: { r: 7, c: 1 } },
-    { s: { r: 7, c: 2 }, e: { r: 7, c: 6 } },
-    { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } },
-    { s: { r: 8, c: 2 }, e: { r: 8, c: 6 } },
-    { s: { r: 9, c: 0 }, e: { r: 9, c: 1 } },
-    { s: { r: 9, c: 2 }, e: { r: 9, c: 6 } },
-    // Logo derecho Control de Procesos (filas 8 a 10, columnas M y N)
-    { s: { r: 7, c: 12 }, e: { r: 9, c: 13 } },
-    // Fila 14: ELEMENTOS POR ANALIZAR (columnas J a N)
-    { s: { r: 13, c: 9 }, e: { r: 13, c: 13 } }
+  // Rangos de celdas combinadas de la cabecera oficial
+  const merges = [
+    'A1:B4',
+    'C1:K4',
+    'L1:N4',
+    'A5:B5',
+    'C5:N5',
+    'A6:B6',
+    'C6:H6',
+    'I6:K6',
+    'L6:N6',
+    'A8:B8',
+    'C8:G8',
+    'A9:B9',
+    'C9:G9',
+    'A10:B10',
+    'C10:G10',
+    'M8:N10',
+    'J14:N14'
+  ];
+  sheetXml += '<mergeCells count="' + merges.length + '">';
+  for (const m of merges) {
+    sheetXml += '<mergeCell ref="' + m + '"/>';
+  }
+  sheetXml += '</mergeCells>';
+  sheetXml += '</worksheet>';
+
+  const files = [
+    { name: '[Content_Types].xml', data: contentTypes },
+    { name: '_rels/.rels', data: rels },
+    { name: 'xl/_rels/workbook.xml.rels', data: workbookRels },
+    { name: 'xl/workbook.xml', data: workbookXml },
+    { name: 'xl/styles.xml', data: stylesXml },
+    { name: 'xl/worksheets/sheet1.xml', data: sheetXml }
   ];
 
-  // Definimos anchos óptimos de columnas para lectura idéntica al archivo oficial
-  ws['!cols'] = [
-    { wch: 12 }, // CÓDIGO
-    { wch: 32 }, // MUESTRA
-    { wch: 12 }, // SN
-    { wch: 10 }, // ID
-    { wch: 10 }, // HORA
-    { wch: 11 }, // TARA
-    { wch: 12 }, // PESO TOTAL
-    { wch: 12 }, // PESO SECO
-    { wch: 12 }, // % SÓLIDOS
-    { wch: 10 }, // %Fe
-    { wch: 10 }, // %Cu
-    { wch: 10 }, // %Zn
-    { wch: 10 }, // %Mo
-    { wch: 10 }  // %Ins
-  ];
-
-  const wb = XLSX.utils.book_new();
-  const sheetName = selectedEquipmentLabel.value
-    ? selectedEquipmentLabel.value.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31)
-    : 'C1_COURIER_NORTE';
-  XLSX.utils.book_append_sheet(wb, ws, sheetName);
-
+  const zipBytes = buildZipPackage(files);
+  const blob = new Blob([zipBytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  });
+  const url = URL.createObjectURL(blob);
   const cleanDate = selectedDate.value || 'fecha';
   const cleanEq = selectedEquipmentLabel.value ? selectedEquipmentLabel.value.replace(/\s+/g, '_') : 'Courier';
   const fileName = `${cleanDate}_${cleanEq}_Calibracion.xlsx`;
 
-  XLSX.writeFile(wb, fileName);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
 };
 
 // --- Ciclo de Vida ---
@@ -1411,6 +1680,51 @@ onMounted(() => {
     height: 20px !important;
     padding: 2px 4px !important;
     border: 1px solid #000000 !important;
+  }
+}
+</style>
+
+<!-- Estilos globales no-scoped para garantizar el ocultamiento del Header y Sidebar en impresión -->
+<style>
+@media print {
+  header,
+  .header,
+  aside,
+  .sidebar,
+  .brand-title,
+  .search-box,
+  .sidebar-menu,
+  .sidebar-footer {
+    display: none !important;
+  }
+
+  .container {
+    margin-top: 0 !important;
+    display: block !important;
+  }
+
+  .content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    background-color: #ffffff !important;
+  }
+
+  /* Ocultar barra superior de ExcelGrid ("Detalle de Muestreo de Ensayos", "SOLO LECTURA", "Habilitar Edición") */
+  .excel-container > .toolbar,
+  .excel-container .actions,
+  .excel-container .title-section,
+  .excel-container .status-badge {
+    display: none !important;
+  }
+
+  /* Ocultar barra de herramientas del reporte y botones */
+  .report-toolbar,
+  .sync-courier-btn,
+  .no-print {
+    display: none !important;
   }
 }
 </style>

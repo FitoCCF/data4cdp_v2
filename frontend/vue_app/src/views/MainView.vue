@@ -51,4 +51,36 @@ onUnmounted(() => {
   margin-left: 64px;
   width: calc(100% - 64px);
 }
+
+/* Reglas de impresión para el layout principal */
+@media print {
+  :deep(.header),
+  :deep(.sidebar),
+  :deep(aside) {
+    display: none !important;
+  }
+  .container {
+    margin-top: 0 !important;
+    display: block !important;
+  }
+  .content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    background-color: #ffffff !important;
+  }
+}
+</style>
+
+<!-- Reglas globales sin scoped para garantizar el ocultamiento en cualquier navegador -->
+<style>
+@media print {
+  .header,
+  .sidebar,
+  aside {
+    display: none !important;
+  }
+}
 </style>

@@ -71,6 +71,29 @@ class PlantViewSet(viewsets.ModelViewSet):
         fields = [field.name for field in Plant._meta.fields]
         return Response({'fields': fields})
 
+    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
+    def delete_impact(self, request):
+        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
+        impact = []
+        for plant in Plant.objects.filter(id__in=ids):
+            areas_count = plant.area_set.count()
+            equipments_count = Equipment.objects.filter(area__plant=plant).count()
+            tasks_count = Task.objects.filter(equipment__area__plant=plant).count()
+            correctives_count = CorrectiveTask.objects.filter(equipment__area__plant=plant).count()
+            samples_count = Sample.objects.filter(equipment__area__plant=plant).count()
+            impact.append({
+                'id': plant.id,
+                'tag': plant.tag,
+                'name': plant.name,
+                'areas_count': areas_count,
+                'equipments_count': equipments_count,
+                'tasks_count': tasks_count,
+                'correctives_count': correctives_count,
+                'samples_count': samples_count,
+                'total_impact': areas_count + equipments_count + tasks_count + correctives_count + samples_count
+            })
+        return Response({'impact': impact})
+
 class AreaViewSet(viewsets.ModelViewSet):
     # Consulta base que obtiene todos los registros del modelo Area
     queryset = Area.objects.all()
@@ -89,11 +112,31 @@ class AreaViewSet(viewsets.ModelViewSet):
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'plant']
 
-
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
         fields = [field.name for field in Area._meta.fields]
         return Response({'fields': fields})
+
+    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
+    def delete_impact(self, request):
+        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
+        impact = []
+        for area in Area.objects.filter(id__in=ids):
+            equipments_count = area.equipment_set.count()
+            tasks_count = Task.objects.filter(equipment__area=area).count()
+            correctives_count = CorrectiveTask.objects.filter(equipment__area=area).count()
+            samples_count = Sample.objects.filter(equipment__area=area).count()
+            impact.append({
+                'id': area.id,
+                'tag': area.tag,
+                'name': area.name,
+                'equipments_count': equipments_count,
+                'tasks_count': tasks_count,
+                'correctives_count': correctives_count,
+                'samples_count': samples_count,
+                'total_impact': equipments_count + tasks_count + correctives_count + samples_count
+            })
+        return Response({'impact': impact})
 
 class SystemViewSet(viewsets.ModelViewSet):
     # Consulta base que obtiene todos los registros del modelo System
@@ -112,11 +155,31 @@ class SystemViewSet(viewsets.ModelViewSet):
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description']
 
-
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
         fields = [field.name for field in System._meta.fields]
         return Response({'fields': fields})
+
+    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
+    def delete_impact(self, request):
+        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
+        impact = []
+        for sys_obj in System.objects.filter(id__in=ids):
+            equipments_count = sys_obj.equipment_set.count()
+            tasks_count = Task.objects.filter(equipment__system=sys_obj).count()
+            correctives_count = CorrectiveTask.objects.filter(equipment__system=sys_obj).count()
+            samples_count = Sample.objects.filter(equipment__system=sys_obj).count()
+            impact.append({
+                'id': sys_obj.id,
+                'tag': sys_obj.tag,
+                'name': sys_obj.name,
+                'equipments_count': equipments_count,
+                'tasks_count': tasks_count,
+                'correctives_count': correctives_count,
+                'samples_count': samples_count,
+                'total_impact': equipments_count + tasks_count + correctives_count + samples_count
+            })
+        return Response({'impact': impact})
 
 class EquipmentViewSet(viewsets.ModelViewSet):
     # Consulta base que obtiene todos los registros del modelo Equipment
@@ -137,11 +200,29 @@ class EquipmentViewSet(viewsets.ModelViewSet):
     # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'system', 'area']
 
-
     @action(detail=False, methods=['get'], url_path='schema')
     def schema(self, request):
         fields = [field.name for field in Equipment._meta.fields]
         return Response({'fields': fields})
+
+    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
+    def delete_impact(self, request):
+        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
+        impact = []
+        for eq in Equipment.objects.filter(id__in=ids):
+            tasks_count = eq.task_set.count()
+            correctives_count = eq.correctivetask_set.count()
+            samples_count = eq.samples.count()
+            impact.append({
+                'id': eq.id,
+                'tag': eq.tag,
+                'name': eq.name,
+                'tasks_count': tasks_count,
+                'correctives_count': correctives_count,
+                'samples_count': samples_count,
+                'total_impact': tasks_count + correctives_count + samples_count
+            })
+        return Response({'impact': impact})
 
 class TaskViewSet(viewsets.ModelViewSet):
     queryset = Task.objects.all()

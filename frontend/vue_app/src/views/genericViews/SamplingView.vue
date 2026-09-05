@@ -6,27 +6,51 @@
 <template>
   <!-- Sección principal del componente de muestreo -->
   <section class="assays-view">
+    <!-- Barra de herramientas superior para acciones (Oculta en impresión y no afecta el diseño oficial) -->
+    <div class="report-toolbar no-print">
+      <div class="toolbar-left">
+        <span class="report-badge">📋 FORMATO CON-PSG-CPR-FM.005</span>
+        <span class="report-version">Versión 02</span>
+      </div>
+      <div class="toolbar-actions">
+        <button
+          type="button"
+          class="btn-toolbar btn-excel"
+          :disabled="loading || gridData.length === 0"
+          @click="exportToExcel"
+          title="Exportar reporte a Excel (.xlsx) con el formato y cabecera oficial"
+        >
+          <span class="btn-icon">📥</span> Exportar a Excel
+        </button>
+        <button
+          type="button"
+          class="btn-toolbar btn-print"
+          :disabled="loading"
+          @click="printReport"
+          title="Imprimir formato oficial (sin controles de edición ni sincronización)"
+        >
+          <span class="btn-icon">🖨️</span> Imprimir
+        </button>
+      </div>
+    </div>
+
     <div class="report-wrapper">
-      <!-- Tabla que estructura la cabecera oficial del reporte -->
+      <!-- Tabla que estructura la cabecera oficial del reporte exactamente según formato CON-PSG-CPR-FM.005 -->
       <table class="report-table">
-        <!-- Fila 1: Logo corporativo, Título y código de control -->
-        <tr>
+        <!-- Filas 1 a 4 del Excel: Logo corporativo, Título con Equipo y Código de control -->
+        <tr class="row-header-top">
           <td class="logo-cell">
             <div class="logo-container">
-              <div class="logo-placeholder">
-                <span class="logo-main">GrupoMéxico</span><br>
-                <span class="logo-sub">MINERÍA</span><br>
-                <span class="logo-bottom">SouthernPerú</span>
-              </div>
+              <img :src="logoSouthern" alt="Grupo México Southern Perú" class="corporate-logo" />
             </div>
           </td>
           <td class="title-cell">
             <div class="title-text">FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER</div>
-            <!-- Muestra el equipo en mayúsculas como en la imagen -->
-            <div v-if="selectedEquipment" class="selected-equipment-title">
-              {{ selectedEquipmentLabel.toUpperCase() }}
+            <!-- Muestra el equipo en mayúsculas como en la hoja de Excel -->
+            <div class="selected-equipment-title">
+              {{ selectedEquipmentLabel ? selectedEquipmentLabel.toUpperCase() : 'COURIER COBRE C2' }}
             </div>
-            <div class="equipment-select-container">
+            <div class="equipment-select-container screen-only">
               <!-- Selector para filtrar datos por equipo y cargar opciones dinámicamente -->
               <select v-model="selectedEquipment" class="header-select red-box-style">
                 <option value="">-- Seleccionar Equipo --</option>
@@ -37,24 +61,26 @@
             </div>
           </td>
           <td class="code-cell">
-            <div>Código: CON-PSG-CPR-FM.005</div>
-            <div>Versión: 02</div>
-            <div>Página: 1 de 1</div>
-          </td>
-        </tr>
-
-        <!-- Fila 2: Unidad minera fija -->
-        <tr>
-          <td colspan="3" class="full-width-cell">
-            <div class="flex-row-space">
-              <span class="label">UNIDAD MINERA:</span>
-              <span class="value">Toquepala</span>
+            <div class="code-box">
+              <div class="code-line"><span class="code-label">Código:</span> CON-PSG-CPR-FM.005</div>
+              <div class="code-line"><span class="code-label">Versión:</span> 02</div>
+              <div class="code-line"><span class="code-label">Página:</span> 1 de 1</div>
             </div>
           </td>
         </tr>
 
-        <!-- Fila 3: Gerencia y Área fijas -->
-        <tr>
+        <!-- Fila 5 del Excel: Unidad minera fija -->
+        <tr class="row-unidad-minera">
+          <td colspan="3" class="full-width-cell">
+            <div class="flex-row-header">
+              <span class="label-header">UNIDAD MINERA:</span>
+              <span class="value-header">Toquepala</span>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Fila 6 del Excel: Gerencia y Área fijas -->
+        <tr class="row-gerencia-area">
           <td colspan="3" class="no-padding-cell">
             <table class="inner-table">
               <tr>
@@ -67,49 +93,50 @@
           </td>
         </tr>
 
-        <!-- Fila 4: Datos variables del reporte (Fecha, Enviado Por, Operador) -->
-        <tr>
+        <!-- Filas 8 a 10 del Excel: Datos variables del reporte (Fecha, Enviado Por, Operador) y Logo Control de Procesos -->
+        <tr class="row-meta-section">
           <td colspan="3" class="no-padding-cell">
-            <table class="inner-table">
+            <table class="inner-table meta-table">
               <tr>
                 <td class="label-cell-wide">FECHA DE MUESTREO:</td>
                 <td class="input-cell">
-                  <!-- Input de tipo fecha para filtrar y asignar fecha a nuevos ensayos -->
-                  <input type="date" v-model="selectedDate" class="date-input red-box-style full-width" />
+                  <!-- Pantalla: Selector interactivo de fecha -->
+                  <input type="date" v-model="selectedDate" class="date-input screen-only" />
+                  <!-- Impresión: Texto limpio formateado -->
+                  <span class="print-only value-text">{{ formatDateDisplay(selectedDate) }}</span>
                 </td>
                 <td rowspan="3" class="right-logo-cell">
-                  <div class="logo-container">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1976d2" stroke-width="2">
-                      <circle cx="12" cy="12" r="10"></circle>
-                      <line x1="12" y1="16" x2="12" y2="12"></line>
-                      <line x1="12" y1="8" x2="12.01" y2="8"></line>
-                    </svg>
-                    <div class="logo-text-right">Control de Procesos<br>2025</div>
+                  <div class="logo-container right-logo-container">
+                    <img :src="logoControl" alt="Control de Procesos 2025" class="department-logo" />
                   </div>
                 </td>
               </tr>
               <tr>
                 <td class="label-cell-wide">ENVIADO POR:</td>
                 <td class="input-cell">
-                  <!-- Selector del usuario del sistema (con nombre y apellido) con estilo de texto en rojo -->
-                  <select v-model="selectedUser" class="header-select red-box-style red-text-style full-width">
+                  <!-- Pantalla: Selector del usuario -->
+                  <select v-model="selectedUser" class="header-select red-text-style screen-only">
                     <option value="">-- Seleccionar --</option>
                     <option v-for="u in userOptions" :key="u.id" :value="u.id">
                       {{ u.nombre }} {{ u.apellido }}
                     </option>
                   </select>
+                  <!-- Impresión: Nombre en texto rojo oficial -->
+                  <span class="print-only value-text red-text-style">{{ selectedUserName || '-' }}</span>
                 </td>
               </tr>
               <tr>
                 <td class="label-cell-wide">OPERADOR DE METALURGIA:</td>
                 <td class="input-cell">
-                  <!-- Selector del operador metalúrgico -->
-                  <select v-model="selectedMetaUser" class="header-select red-box-style full-width">
+                  <!-- Pantalla: Selector de operador metalúrgico -->
+                  <select v-model="selectedMetaUser" class="header-select screen-only">
                     <option value="">-- Seleccionar --</option>
                     <option v-for="mu in metaUserOptions" :key="mu" :value="mu">
                       {{ mu }}
                     </option>
                   </select>
+                  <!-- Impresión: Texto de operador limpio -->
+                  <span class="print-only value-text">{{ selectedMetaUser || '-' }}</span>
                 </td>
               </tr>
             </table>
@@ -118,10 +145,10 @@
       </table>
 
       <!-- Mensajes de Carga y Errores del Servidor -->
-      <div v-if="loading" class="state-message">Cargando datos...</div>
-      <div v-else-if="error" class="state-message error">{{ error }}</div>
+      <div v-if="loading" class="state-message no-print">Cargando datos...</div>
+      <div v-else-if="error" class="state-message error no-print">{{ error }}</div>
 
-      <!-- Contenedor del grid de Excel reutilizable -->
+      <!-- Contenedor del grid de Excel reutilizable (Celdas y cálculos sin modificar) -->
       <div class="table-container">
         <!-- Instanciamos ExcelGrid pasándole las cabeceras, grupos, datos y eventos correspondientes -->
         <ExcelGrid
@@ -134,11 +161,11 @@
           @save="handleSave"
           @delete="handleDelete"
         >
-          <!-- Botón para sincronizar manualmente con la API del Courier a la altura de 'Habilitar Edición' al final -->
+          <!-- Botón para sincronizar manualmente con la API del Courier a la altura de 'Habilitar Edición' (Oculto en impresión) -->
           <template #actions-end>
             <button
               type="button"
-              class="sync-courier-btn"
+              class="sync-courier-btn no-print"
               :disabled="loading || isSyncing || !selectedEquipment"
               title="Consultar y sincronizar con la API del analizador Courier para la fecha y equipo seleccionados"
               @click="handleManualSync"
@@ -155,6 +182,11 @@
 <script setup>
 // Importamos dependencias reactivas de Vue
 import { ref, computed, onMounted, watch } from 'vue';
+// Importamos SheetJS para exportación a Excel oficial
+import * as XLSX from 'xlsx';
+// Importamos logos corporativos extraídos del formato oficial
+import logoSouthern from '../../assets/courier_image3.png';
+import logoControl from '../../assets/courier_image2.png';
 // Importamos el cliente HTTP API configurado
 import { api } from '../../api';
 // Importamos el composable de control de llamadas a la API
@@ -623,6 +655,203 @@ const formatNumber = (val) => {
   return val;
 };
 
+// Nombre del usuario seleccionado para visualización limpia en impresión y exportación
+const selectedUserName = computed(() => {
+  const u = userOptions.value.find(usr => usr.id == selectedUser.value);
+  if (u) return `${u.nombre} ${u.apellido}`;
+  return '';
+});
+
+// Formatea la fecha ISO (YYYY-MM-DD) a formato DD/MM/YYYY para impresión y Excel
+const formatDateDisplay = (dateStr) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    return `${parts[2]}/${parts[1]}/${parts[0]}`;
+  }
+  return dateStr;
+};
+
+// Imprime el formato oficial ocultando controles de edición y botones
+const printReport = () => {
+  window.print();
+};
+
+// Exporta el reporte a Excel (.xlsx) replicando exactamente la estructura de la cabecera CON-PSG-CPR-FM.005
+// Excluye controles de edición, botones de sincronización e IDs internos de BD
+const exportToExcel = () => {
+  if (!gridData.value || gridData.value.length === 0) {
+    alert('No hay datos disponibles para exportar.');
+    return;
+  }
+
+  const wsData = [];
+  const eqName = selectedEquipmentLabel.value ? selectedEquipmentLabel.value.toUpperCase() : 'COURIER COBRE C2';
+
+  // Fila 1 a 4 del Excel: Cabecera principal (Título, Logos y Control)
+  wsData.push([
+    'Grupo México\nSouthern Perú', '',
+    `FORMATO DE MUESTREO DE CALIBRACIÓN DE COURIER\n${eqName}`, '', '', '', '', '', '', '', '',
+    'Código: CON-PSG-CPR-FM.005\nVersión: 02\nPágina: 1 de 1', '', ''
+  ]);
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+
+  // Fila 5: Unidad Minera
+  wsData.push(['UNIDAD MINERA:', '', 'Toquepala', '', '', '', '', '', '', '', '', '', '', '']);
+
+  // Fila 6: Gerencia y Área
+  wsData.push([
+    'GERENCIA:', '', 'Concentradora', '', '', '', '', '',
+    'DEPARTAMENTO / ÁREA:', '', '', 'Control de Procesos', '', ''
+  ]);
+
+  // Fila 7: Espaciador
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+
+  // Fila 8: Fecha de Muestreo y Logo derecho
+  const displayDate = formatDateDisplay(selectedDate.value) || selectedDate.value;
+  wsData.push([
+    'FECHA DE MUESTREO:', '', displayDate, '', '', '', '', '',
+    '', '', '', '', 'Control de Procesos\n2025', ''
+  ]);
+
+  // Fila 9: Enviado Por
+  wsData.push([
+    'ENVIADO POR:', '', selectedUserName.value || '', '', '', '', '', '',
+    '', '', '', '', '', ''
+  ]);
+
+  // Fila 10: Operador de Metalurgia
+  wsData.push([
+    'OPERADOR DE METALURGIA:', '', selectedMetaUser.value || '', '', '', '', '', '',
+    '', '', '', '', '', ''
+  ]);
+
+  // Filas 11 a 13: Espaciadores
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+  wsData.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+
+  // Fila 14: Grupo de Cabecera ELEMENTOS POR ANALIZAR (columnas J a N)
+  wsData.push([
+    '', '', '', '', '', '', '', '', '',
+    'ELEMENTOS POR ANALIZAR', '', '', '', ''
+  ]);
+
+  // Fila 15: Cabeceras de Columnas del Formato Físico (sin ID DB)
+  wsData.push([
+    'CÓDIGO',
+    'MUESTRA',
+    'SN',
+    'ID',
+    'HORA',
+    'TARA',
+    'PESO TOTAL',
+    'PESO SECO',
+    '% SÓLIDOS',
+    '%Fe',
+    '%Cu',
+    '%Zn',
+    '%Mo',
+    '%Ins'
+  ]);
+
+  // Filas 16+: Registros de datos del grid
+  gridData.value.forEach(row => {
+    // row[0] es ID DB (interno), no se incluye en el reporte oficial
+    // row[2] es sampleId, lo convertimos al nombre legible de la muestra
+    const sampleId = row[2];
+    const sampleName = samplesById.value[sampleId]?.name || (sampleId ? String(sampleId) : '');
+
+    const parseNum = (val) => {
+      if (val === '' || val === null || val === undefined) return '';
+      const n = parseFloat(String(val).replace(',', '.'));
+      return isNaN(n) ? val : n;
+    };
+
+    wsData.push([
+      row[1] || '',           // Col 1: CÓDIGO
+      sampleName,             // Col 2: MUESTRA
+      row[3] || '',           // Col 3: SN
+      row[4] || '',           // Col 4: ID
+      row[5] || '',           // Col 5: HORA
+      parseNum(row[6]),       // Col 6: TARA
+      parseNum(row[7]),       // Col 7: PESO TOTAL
+      parseNum(row[8]),       // Col 8: PESO SECO
+      parseNum(row[9]),       // Col 9: % SÓLIDOS
+      parseNum(row[10]),      // Col 10: %Fe
+      parseNum(row[11]),      // Col 11: %Cu
+      parseNum(row[12]),      // Col 12: %Zn
+      parseNum(row[13]),      // Col 13: %Mo
+      parseNum(row[14])       // Col 14: %Ins
+    ]);
+  });
+
+  // Generamos la hoja de cálculo con SheetJS
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Configuramos los rangos combinados exactamente como en el formato CON-PSG-CPR-FM.005
+  ws['!merges'] = [
+    // Bloque 1: A1:B4 (Logo corporativo)
+    { s: { r: 0, c: 0 }, e: { r: 3, c: 1 } },
+    // Bloque 2: C1:K4 (Título y Equipo)
+    { s: { r: 0, c: 2 }, e: { r: 3, c: 10 } },
+    // Bloque 3: L1:N4 (Código de control documental)
+    { s: { r: 0, c: 11 }, e: { r: 3, c: 13 } },
+    // Fila 5: UNIDAD MINERA
+    { s: { r: 4, c: 0 }, e: { r: 4, c: 1 } },
+    { s: { r: 4, c: 2 }, e: { r: 4, c: 13 } },
+    // Fila 6: GERENCIA & ÁREA
+    { s: { r: 5, c: 0 }, e: { r: 5, c: 1 } },
+    { s: { r: 5, c: 2 }, e: { r: 5, c: 7 } },
+    { s: { r: 5, c: 8 }, e: { r: 5, c: 10 } },
+    { s: { r: 5, c: 11 }, e: { r: 5, c: 13 } },
+    // Filas 8-10: Metadatos
+    { s: { r: 7, c: 0 }, e: { r: 7, c: 1 } },
+    { s: { r: 7, c: 2 }, e: { r: 7, c: 6 } },
+    { s: { r: 8, c: 0 }, e: { r: 8, c: 1 } },
+    { s: { r: 8, c: 2 }, e: { r: 8, c: 6 } },
+    { s: { r: 9, c: 0 }, e: { r: 9, c: 1 } },
+    { s: { r: 9, c: 2 }, e: { r: 9, c: 6 } },
+    // Logo derecho Control de Procesos (filas 8 a 10, columnas M y N)
+    { s: { r: 7, c: 12 }, e: { r: 9, c: 13 } },
+    // Fila 14: ELEMENTOS POR ANALIZAR (columnas J a N)
+    { s: { r: 13, c: 9 }, e: { r: 13, c: 13 } }
+  ];
+
+  // Definimos anchos óptimos de columnas para lectura idéntica al archivo oficial
+  ws['!cols'] = [
+    { wch: 12 }, // CÓDIGO
+    { wch: 32 }, // MUESTRA
+    { wch: 12 }, // SN
+    { wch: 10 }, // ID
+    { wch: 10 }, // HORA
+    { wch: 11 }, // TARA
+    { wch: 12 }, // PESO TOTAL
+    { wch: 12 }, // PESO SECO
+    { wch: 12 }, // % SÓLIDOS
+    { wch: 10 }, // %Fe
+    { wch: 10 }, // %Cu
+    { wch: 10 }, // %Zn
+    { wch: 10 }, // %Mo
+    { wch: 10 }  // %Ins
+  ];
+
+  const wb = XLSX.utils.book_new();
+  const sheetName = selectedEquipmentLabel.value
+    ? selectedEquipmentLabel.value.replace(/[^a-zA-Z0-9_-]/g, '_').substring(0, 31)
+    : 'C1_COURIER_NORTE';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+
+  const cleanDate = selectedDate.value || 'fecha';
+  const cleanEq = selectedEquipmentLabel.value ? selectedEquipmentLabel.value.replace(/\s+/g, '_') : 'Courier';
+  const fileName = `${cleanDate}_${cleanEq}_Calibracion.xlsx`;
+
+  XLSX.writeFile(wb, fileName);
+};
+
 // --- Ciclo de Vida ---
 onMounted(() => {
   loadData();
@@ -632,15 +861,107 @@ onMounted(() => {
 <style scoped>
 /* Contenedor principal de la vista */
 .assays-view {
-  font-family: 'Arial', sans-serif;
+  font-family: Arial, Helvetica, sans-serif;
   color: #000;
   width: 100%;
   max-width: 100%;
   margin: 0 auto;
   background: white;
-  padding: 20px;
+  padding: 15px 20px;
   box-sizing: border-box;
-  overflow-x: auto; /* Permite el scroll de toda la hoja junta si supera la pantalla */
+  overflow-x: auto;
+}
+
+/* Barra de herramientas superior para acciones (Excel, Imprimir) */
+.report-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  max-width: 100%;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.report-badge {
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #1e293b;
+  background: #e2e8f0;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.report-version {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.btn-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.btn-excel {
+  background-color: #1b5e20;
+  color: #ffffff;
+  border-color: #144917;
+  box-shadow: 0 1px 2px rgba(27, 94, 32, 0.2);
+}
+
+.btn-excel:hover:not(:disabled) {
+  background-color: #2e7d32;
+  box-shadow: 0 2px 4px rgba(27, 94, 32, 0.3);
+}
+
+.btn-print {
+  background-color: #374151;
+  color: #ffffff;
+  border-color: #1f2937;
+  box-shadow: 0 1px 2px rgba(55, 65, 81, 0.2);
+}
+
+.btn-print:hover:not(:disabled) {
+  background-color: #4b5563;
+  box-shadow: 0 2px 4px rgba(55, 65, 81, 0.3);
+}
+
+.btn-toolbar:disabled {
+  background-color: #e2e8f0;
+  color: #94a3b8;
+  border-color: #cbd5e1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-icon {
+  font-size: 1rem;
 }
 
 /* Envolvedor del reporte para alinear el encabezado y la tabla al mismo ancho */
@@ -649,63 +970,227 @@ onMounted(() => {
   margin: 0 auto;
 }
 
-/* Estilos de la tabla de reporte que replica el formato físico */
+/* Estilos de la tabla de reporte que replica exactamente el formato físico CON-PSG-CPR-FM.005 */
 .report-table {
   width: 100% !important;
   border-collapse: collapse;
-  margin-bottom: 20px;
-  border: 1px solid #000;
+  margin-bottom: 12px;
+  border: 1px solid #000000;
   box-sizing: border-box;
 }
 
 .report-table td {
-  border: 1px solid #000;
-  padding: 5px;
+  border: 1px solid #000000;
+  padding: 4px 6px;
   vertical-align: middle;
 }
 
+/* Fila 1 a 4: Logos y Título */
+.row-header-top {
+  height: 80px;
+}
+
 .logo-cell {
-  width: 20%;
+  width: 180px;
+  min-width: 180px;
   text-align: center;
+  padding: 6px !important;
 }
-.logo-main {
-  font-weight: bold;
-  font-size: 1.1rem;
-  color: #c62828;
-}
-.logo-sub {
-  font-size: 0.8rem;
-  color: #555;
-  letter-spacing: 2px;
-}
-.logo-bottom {
-  font-weight: bold;
-  font-size: 0.9rem;
-  color: #555;
+
+.corporate-logo {
+  max-height: 55px;
+  max-width: 165px;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto;
 }
 
 .title-cell {
-  width: 60%;
   text-align: center;
+  padding: 6px 12px !important;
 }
+
 .title-text {
   font-weight: bold;
-  font-size: 1.1rem;
-  margin-bottom: 5px;
+  font-size: 11pt;
+  line-height: 1.3;
+  color: #000000;
+  letter-spacing: 0.3px;
 }
+
 .selected-equipment-title {
   font-weight: bold;
-  font-size: 1rem;
-  margin-bottom: 5px;
-  color: #000;
+  font-size: 11pt;
+  margin-top: 4px;
+  color: #000000;
 }
+
 .equipment-select-container {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  padding: 2px;
-  min-width: 250px;
+  margin-top: 4px;
 }
+
+.code-cell {
+  width: 190px;
+  min-width: 190px;
+  padding: 6px 10px !important;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.code-box {
+  font-size: 9.5pt;
+  line-height: 1.5;
+  color: #000000;
+}
+
+.code-line {
+  white-space: nowrap;
+}
+
+.code-label {
+  font-weight: bold;
+}
+
+/* Fila 5: Unidad Minera */
+.row-unidad-minera td {
+  padding: 4px 10px !important;
+}
+
+.flex-row-header {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.label-header {
+  font-weight: bold;
+  font-size: 10pt;
+  min-width: 140px;
+}
+
+.value-header {
+  font-size: 10pt;
+  text-align: center;
+  flex: 1;
+}
+
+/* Fila 6 y Metadatos */
+.no-padding-cell {
+  padding: 0 !important;
+}
+
+.inner-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  border: none;
+}
+
+.inner-table tr {
+  border-bottom: 1px solid #000000;
+}
+
+.inner-table tr:last-child {
+  border-bottom: none;
+}
+
+.inner-table td {
+  border: none;
+  border-right: 1px solid #000000;
+  padding: 4px 8px;
+  font-size: 10pt;
+}
+
+.inner-table td:last-child {
+  border-right: none;
+}
+
+.label-cell {
+  width: 16%;
+  font-weight: bold;
+  background-color: #ffffff;
+}
+
+.value-cell {
+  width: 34%;
+  text-align: center;
+}
+
+/* Metadatos (Filas 8 a 10) */
+.meta-table tr {
+  height: 28px;
+}
+
+.label-cell-wide {
+  width: 25%;
+  font-weight: bold;
+  background-color: #ffffff;
+}
+
+.input-cell {
+  width: 45%;
+  vertical-align: middle;
+}
+
+.right-logo-cell {
+  width: 30%;
+  text-align: center;
+  vertical-align: middle;
+  border-left: 1px solid #000000 !important;
+  padding: 4px !important;
+}
+
+.right-logo-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.department-logo {
+  max-height: 60px;
+  max-width: 140px;
+  object-fit: contain;
+  display: block;
+}
+
+/* Campos de entrada interactivos en pantalla */
+.date-input, .header-select {
+  border: none;
+  border-bottom: 1px dashed #444;
+  background: transparent;
+  font-family: inherit;
+  font-size: 9.5pt;
+  font-weight: bold;
+  outline: none;
+  cursor: pointer;
+  color: #000000;
+  text-align: left;
+  padding: 2px 4px;
+}
+
+.red-text-style {
+  color: #c62828 !important;
+  font-weight: bold;
+}
+
+.value-text {
+  font-size: 10pt;
+  font-weight: bold;
+}
+
+/* Control de visibilidad para pantalla vs impresión */
+.screen-only {
+  display: inline-block;
+}
+
+.print-only {
+  display: none;
+}
+
+/* Botón de sincronización con API del Courier */
 .sync-courier-btn {
   padding: 4px 10px;
   background-color: #1976d2;
@@ -722,9 +1207,11 @@ onMounted(() => {
   gap: 4px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
+
 .sync-courier-btn:hover:not(:disabled) {
   background-color: #1565c0;
 }
+
 .sync-courier-btn:disabled {
   background-color: #e0e0e0;
   color: #9e9e9e;
@@ -733,117 +1220,11 @@ onMounted(() => {
   box-shadow: none;
 }
 
-.code-cell {
-  width: 20%;
-  font-size: 0.8rem;
-  text-align: right;
-  vertical-align: top;
-  line-height: 1.4;
-}
-
-.full-width-cell {
-  font-weight: bold;
-}
-.flex-row-space {
-  display: flex;
-  justify-content: space-between;
-  width: 100%;
-  align-items: center;
-}
-
-.no-padding-cell {
-  padding: 0 !important;
-}
-
-.inner-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin: 0;
-  border: none;
-}
-.inner-table tr {
-  border-bottom: 1px solid #000;
-}
-.inner-table tr:last-child {
-  border-bottom: none;
-}
-.inner-table td {
-  border: none;
-  border-right: 1px solid #000;
-  padding: 5px;
-}
-.inner-table td:last-child {
-  border-right: none;
-}
-
-.label-cell {
-  width: 20%;
-  font-weight: bold;
-  background-color: #f5f5f5;
-}
-.value-cell {
-  width: 30%;
-}
-
-.label-cell-wide {
-  width: 30%;
-  font-weight: bold;
-}
-.input-cell {
-  width: 40%;
-}
-.right-logo-cell {
-  width: 30%;
-  text-align: center;
-  vertical-align: middle;
-}
-
-/* Campos de entrada con línea discontinua (simula el formato físico de la imagen) */
-.date-input, .header-select {
-  border: none;
-  border-bottom: 1px dashed #000;
-  background: transparent;
-  font-family: inherit;
-  font-size: 1rem;
-  font-weight: bold;
-  outline: none;
-  cursor: pointer;
-  color: #000;
-  text-align: left;
-  text-align-last: left;
-}
-
-/* Cambiar texto a color rojo en el selector de usuario enviado por */
-.red-text-style {
-  color: #c62828 !important;
-}
-
-.red-box-style {
-  padding: 2px 5px;
-  font-weight: bold;
-}
-.full-width {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.logo-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-.logo-text-right {
-  font-size: 0.8rem;
-  color: #1976d2;
-  font-weight: bold;
-  margin-top: 5px;
-}
-
-/* Contenedor de la tabla */
+/* Contenedor de la tabla de datos */
 .table-container {
   overflow-x: auto;
-  margin-top: 20px;
-  width: max-content; /* Se ajusta exactamente al ancho de excel-container */
+  margin-top: 15px;
+  width: max-content;
 }
 
 /* Forzar que el table-wrapper de ExcelGrid muestre todas las columnas sin scroll interno */
@@ -855,7 +1236,7 @@ onMounted(() => {
   width: max-content !important;
 }
 
-/* --- OVERRIDES DEL DISEÑO DE EXCELGRID MEDIANTE DEEP SELECTORS --- */
+/* --- OVERRIDES DEL DISEÑO DE EXCELGRID MEDIANTE DEEP SELECTORS (SIN MODIFICAR CELDAS NI LÓGICA) --- */
 
 /* Ocultar la primera columna (ID DB de la base de datos) */
 .table-container :deep(.hidden-column) {
@@ -865,9 +1246,9 @@ onMounted(() => {
   display: none !important;
 }
 
-/* Estilo para las cabeceras individuales (Fondo verde pastel y bordes negros) */
+/* Estilo para las cabeceras individuales (Fondo verde pastel y bordes negros según Excel) */
 .table-container :deep(.excel-table th) {
-  background-color: #e2f0d9 !important; /* Verde menta claro */
+  background-color: #e2f0d9 !important;
   color: #000000 !important;
   font-weight: bold !important;
   border: 1px solid #000000 !important;
@@ -891,8 +1272,8 @@ onMounted(() => {
 .table-container :deep(.excel-table td) {
   border: 1px solid #000000 !important;
   font-size: 0.85rem !important;
-  height: 30px !important;
-  padding: 4px 6px !important;
+  height: 28px !important;
+  padding: 3px 6px !important;
   text-align: center !important;
 }
 
@@ -913,8 +1294,123 @@ onMounted(() => {
 .state-message {
   text-align: center;
   padding: 10px;
+  font-weight: 500;
 }
 .state-message.error {
-  color: red;
+  color: #dc2626;
+}
+
+/* --- REGLAS DE IMPRESIÓN OFICIAL (@media print) --- */
+@media print {
+  @page {
+    size: landscape;
+    margin: 6mm 8mm;
+  }
+
+  /* Ocultar elementos de interfaz, navegación y botones de control */
+  .no-print,
+  .report-toolbar,
+  .sync-courier-btn,
+  .screen-only,
+  .state-message,
+  :deep(.excel-actions),
+  :deep(.excel-pagination),
+  :deep(.btn-edit),
+  :deep(.btn-save),
+  :deep(.btn-delete),
+  :deep(.btn-add),
+  nav,
+  header,
+  aside,
+  .sidebar,
+  .layout-header,
+  .layout-sidebar {
+    display: none !important;
+  }
+
+  /* Mostrar datos limpios de impresión */
+  .print-only {
+    display: inline-block !important;
+  }
+
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .assays-view {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .report-wrapper {
+    width: 100% !important;
+    margin: 0 !important;
+  }
+
+  .report-table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin-bottom: 6px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .report-table td {
+    border: 1px solid #000000 !important;
+    padding: 3px 5px !important;
+  }
+
+  .table-container {
+    margin-top: 5px !important;
+    width: 100% !important;
+    overflow: visible !important;
+  }
+
+  .table-container :deep(.table-wrapper) {
+    overflow: visible !important;
+  }
+
+  .table-container :deep(.excel-container) {
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: transparent !important;
+  }
+
+  .table-container :deep(.excel-table) {
+    width: 100% !important;
+    font-size: 7.5pt !important;
+    border-collapse: collapse !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-container :deep(.excel-table th) {
+    background-color: #e2f0d9 !important;
+    border: 1px solid #000000 !important;
+    color: #000000 !important;
+    padding: 2px 4px !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-container :deep(.excel-table th.group-header-cell) {
+    background-color: #d9d9d9 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .table-container :deep(.excel-table td) {
+    font-size: 7.5pt !important;
+    height: 20px !important;
+    padding: 2px 4px !important;
+    border: 1px solid #000000 !important;
+  }
 }
 </style>

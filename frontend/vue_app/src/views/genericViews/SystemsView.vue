@@ -1,13 +1,6 @@
 <template>
   <div class="systems-view">
-    <!--
-      Componente ExcelGrid reutilizable
-      - title: Título de la tabla
-      - headers: Array con los nombres de las columnas
-      - data: Matriz de datos
-      - save: Evento emitido al guardar cambios
-      - delete: Evento emitido al eliminar filas
-    -->
+    <!-- Componente ExcelGrid reutilizable para mantenimiento avanzado -->
     <ExcelGrid
       title="Mantenimiento de Sistemas"
       :headers="headers"
@@ -19,11 +12,44 @@
       :serverSideFiltering="true"
       :filterData="filterData"
       @save="handleSave"
-      @delete="handleDelete"
+      @delete="confirmDeleteFromGrid"
       @pageChange="handlePageChange"
       @pageSizeChange="handlePageSizeChange"
       @filterChange="handleFilterChange"
       @sortChange="handleSortChange"
+      @rowDblClick="handleRowDblClick"
+    >
+      <template #actions-end>
+        <button 
+          type="button" 
+          class="btn btn-sm btn-outline-primary" 
+          @click="openCreateModal"
+          title="Crear sistema con formulario guiado y validaciones"
+        >
+          ➕ Nuevo Sistema
+        </button>
+      </template>
+    </ExcelGrid>
+
+    <!-- Modal asistido para creación y edición de Sistemas -->
+    <AssetSimpleModal
+      v-if="isModalOpen"
+      :isOpen="isModalOpen"
+      :entityType="'system'"
+      :itemId="selectedSystemId"
+      @close="isModalOpen = false"
+      @saved="onItemSaved"
+    />
+
+    <!-- Modal de confirmación de borrado seguro con auditoría de impacto -->
+    <SafeDeleteModal
+      v-if="isDeleteModalOpen"
+      :isOpen="isDeleteModalOpen"
+      :endpoint="'systems'"
+      :entityTitle="'Sistemas'"
+      :idsToDelete="pendingDeleteIds"
+      @close="isDeleteModalOpen = false"
+      @confirmed="executeConfirmedDelete"
     />
     
     <!-- Indicador de carga -->
@@ -37,6 +63,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
+import AssetSimpleModal from '../../components/AssetSimpleModal.vue';
+import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
 import { api } from '../../api';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
 import { sanitizeValue } from '../../utils/gridHelpers';
@@ -45,9 +73,9 @@ import { sanitizeValue } from '../../utils/gridHelpers';
 const headers = ['ID', 'Tag', 'Nombre', 'Descripción'];
 
 // Estado reactivo
-const systemsData = ref([]); // Almacena los datos en formato matriz
-const loading = ref(false);  // Controla la visibilidad del loader
-const error = ref(null);     // Almacena mensajes de error
+const systemsData = ref([]);
+const loading = ref(false);
+const error = ref(null);
 
 // Estado Paginación y Filtrado
 const currentPage = ref(1);
@@ -56,7 +84,42 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
-const filterData = ref([]); // Datos completos para el popup de filtros
+const filterData = ref([]);
+
+// Modales asistidos y borrado seguro
+const isModalOpen = ref(false);
+const selectedSystemId = ref(null);
+const isDeleteModalOpen = ref(false);
+const pendingDeleteIds = ref([]);
+
+const openCreateModal = () => {
+  selectedSystemId.value = null;
+  isModalOpen.value = true;
+};
+
+const handleRowDblClick = ({ row }) => {
+  if (row && row[0]) {
+    selectedSystemId.value = row[0];
+    isModalOpen.value = true;
+  }
+};
+
+const onItemSaved = async () => {
+  isModalOpen.value = false;
+  await loadData(currentPage.value);
+  await loadFilterData();
+};
+
+const confirmDeleteFromGrid = (idsToDelete) => {
+  if (!idsToDelete || idsToDelete.length === 0) return;
+  pendingDeleteIds.value = idsToDelete;
+  isDeleteModalOpen.value = true;
+};
+
+const executeConfirmedDelete = async () => {
+  isDeleteModalOpen.value = false;
+  await handleDelete(pendingDeleteIds.value);
+};
 
 const loadFilterData = async () => {
     try {
@@ -107,7 +170,6 @@ const loadData = async (page = 1) => {
         }
     }
 
-    // Petición GET al endpoint de sistemas
     const response = await api.get('systems/', { params });
     const responseData = response.data;
     let dataArray = [];
@@ -126,8 +188,6 @@ const loadData = async (page = 1) => {
         console.warn('La API no devolvió un formato válido:', responseData);
     }
 
-    // Transformar array de objetos a matriz de arrays para ExcelGrid
-    // Mapeo: [id, tag, name, description]
     systemsData.value = dataArray.map(s => [
         s.id,
         s.tag || '',
@@ -163,42 +223,33 @@ const handleSortChange = (sortConfig) => {
 };
 
 /**
- * Maneja el guardado de cambios (Creación y Edición)
- * @param {Array} updatedGrid - Matriz con los datos modificados
+ * Maneja el guardado de cambios masivos en ExcelGrid (Creación y Edición)
  */
 const handleSave = async (updatedGrid) => {
   loading.value = true;
   try {
-    // Iterar sobre cada fila para determinar si es update o create
     const promises = updatedGrid.map(async (row) => {
-        const id = row[0]; // ID está en la primera columna
+        const id = row[0];
         
-          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
             tag: sanitizeValue(row[1]),
             name: sanitizeValue(row[2]),
             description: sanitizeValue(row[3]),
           };
 
-        // Si tiene ID válido, es una actualización (PUT)
         if (id && String(id).trim() !== '') {
             return api.put(`systems/${id}/`, payload);
         } else {
-            // Si no tiene ID, es una creación (POST)
-            // Solo crear si hay datos mínimos (tag o nombre)
             if (payload.tag || payload.name) {
                 return api.post('systems/', payload);
             }
         }
     });
 
-    // Esperar a que todas las peticiones terminen
     await Promise.all(promises);
-
     alert('Cambios guardados correctamente.');
 
-    // Recargar datos para obtener IDs nuevos y asegurar sincronización
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
 
   } catch (err) {
@@ -210,7 +261,7 @@ const handleSave = async (updatedGrid) => {
 };
 
 /**
- * Maneja la eliminación de filas
+ * Maneja la eliminación de filas confirmadas
  * @param {Array} idsToDelete - Array de IDs a eliminar
  */
 const handleDelete = async (idsToDelete) => {
@@ -223,17 +274,17 @@ const handleDelete = async (idsToDelete) => {
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
         await loadFilterData();
+        await loadData(currentPage.value);
 
     } catch (err) {
         console.error('Error eliminando sistemas:', err);
         alert('Error al eliminar las filas.');
+        await loadData(currentPage.value);
     } finally {
-        await loadData();
         loading.value = false;
     }
 };
 
-// Cargar datos al montar el componente
 onMounted(() => {
   loadData();
   loadFilterData();
@@ -246,7 +297,18 @@ onMounted(() => {
   height: 100%;
 }
 
-/* Overlay de carga centrado */
+.btn-outline-primary {
+  background-color: transparent;
+  border: 1px solid #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.btn-outline-primary:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
 .loading-overlay {
   position: absolute;
   top: 0;
@@ -261,7 +323,6 @@ onMounted(() => {
   z-index: 100;
 }
 
-/* Estilo para mensajes de error */
 .error-message {
   color: red;
   padding: 10px;

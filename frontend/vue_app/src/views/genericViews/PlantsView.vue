@@ -1,10 +1,6 @@
 <template>
   <div class="plants-view">
-    <!--
-      Componente ExcelGrid reutilizable
-      - @save: Evento para guardar cambios (crear/actualizar)
-      - @delete: Evento para eliminar filas
-    -->
+    <!-- Componente ExcelGrid reutilizable para mantenimiento avanzado -->
     <ExcelGrid
       title="Mantenimiento de Plantas"
       :headers="headers"
@@ -16,11 +12,44 @@
       :serverSideFiltering="true"
       :filterData="filterData"
       @save="handleSave"
-      @delete="handleDelete"
+      @delete="confirmDeleteFromGrid"
       @pageChange="handlePageChange"
       @pageSizeChange="handlePageSizeChange"
       @filterChange="handleFilterChange"
       @sortChange="handleSortChange"
+      @rowDblClick="handleRowDblClick"
+    >
+      <template #actions-end>
+        <button 
+          type="button" 
+          class="btn btn-sm btn-outline-primary" 
+          @click="openCreateModal"
+          title="Crear planta de forma guiada con validaciones"
+        >
+          ➕ Nueva Planta
+        </button>
+      </template>
+    </ExcelGrid>
+
+    <!-- Modal asistido para creación y edición de Plantas -->
+    <AssetSimpleModal
+      v-if="isModalOpen"
+      :isOpen="isModalOpen"
+      :entityType="'plant'"
+      :itemId="selectedPlantId"
+      @close="isModalOpen = false"
+      @saved="onItemSaved"
+    />
+
+    <!-- Modal de confirmación de borrado seguro con auditoría de impacto -->
+    <SafeDeleteModal
+      v-if="isDeleteModalOpen"
+      :isOpen="isDeleteModalOpen"
+      :endpoint="'plants'"
+      :entityTitle="'Plantas'"
+      :idsToDelete="pendingDeleteIds"
+      @close="isDeleteModalOpen = false"
+      @confirmed="executeConfirmedDelete"
     />
     
     <!-- Indicador de carga -->
@@ -34,6 +63,8 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
+import AssetSimpleModal from '../../components/AssetSimpleModal.vue';
+import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
 import { api } from '../../api';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
 import { sanitizeValue } from '../../utils/gridHelpers';
@@ -54,6 +85,41 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 const filterData = ref([]);
+
+// Estado para modales asistidos y borrado seguro
+const isModalOpen = ref(false);
+const selectedPlantId = ref(null);
+const isDeleteModalOpen = ref(false);
+const pendingDeleteIds = ref([]);
+
+const openCreateModal = () => {
+  selectedPlantId.value = null;
+  isModalOpen.value = true;
+};
+
+const handleRowDblClick = ({ row }) => {
+  if (row && row[0]) {
+    selectedPlantId.value = row[0];
+    isModalOpen.value = true;
+  }
+};
+
+const onItemSaved = async () => {
+  isModalOpen.value = false;
+  await loadData(currentPage.value);
+  await loadFilterData();
+};
+
+const confirmDeleteFromGrid = (idsToDelete) => {
+  if (!idsToDelete || idsToDelete.length === 0) return;
+  pendingDeleteIds.value = idsToDelete;
+  isDeleteModalOpen.value = true;
+};
+
+const executeConfirmedDelete = async () => {
+  isDeleteModalOpen.value = false;
+  await handleDelete(pendingDeleteIds.value);
+};
 
 const loadFilterData = async () => {
     try {
@@ -157,7 +223,7 @@ const handleSortChange = (sortConfig) => {
 };
 
 /**
- * Maneja el guardado de cambios (Creación y Edición)
+ * Maneja el guardado de cambios masivos en ExcelGrid (Creación y Edición)
  */
 const handleSave = async (updatedGrid) => {
   loading.value = true;
@@ -165,7 +231,6 @@ const handleSave = async (updatedGrid) => {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
         
-          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
             tag: sanitizeValue(row[1]),
             name: sanitizeValue(row[2]),
@@ -183,7 +248,7 @@ const handleSave = async (updatedGrid) => {
 
     await Promise.all(promises);
     alert('Cambios guardados correctamente en la base de datos.');
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
   } catch (err) {
     console.error('Error guardando plantas:', err);
@@ -194,7 +259,7 @@ const handleSave = async (updatedGrid) => {
 };
 
 /**
- * Maneja la eliminación de filas
+ * Maneja la eliminación de filas confirmadas
  * @param {Array} idsToDelete - Array de IDs a eliminar
  */
 const handleDelete = async (idsToDelete) => {
@@ -202,25 +267,17 @@ const handleDelete = async (idsToDelete) => {
 
     loading.value = true;
     try {
-        // Crear una promesa de eliminación para cada ID
         const deletePromises = idsToDelete.map(id => api.delete(`plants/${id}/`));
-
-        // Esperar a que todas las eliminaciones se completen
         await Promise.all(deletePromises);
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
-
         await loadFilterData();
-
-        // No es necesario recargar los datos, ya que el grid local ya se actualizó.
-        // Opcionalmente, se puede recargar para asegurar consistencia total.
-        // await loadData();
+        await loadData(currentPage.value);
 
     } catch (err) {
         console.error('Error eliminando plantas:', err);
         alert('Error al eliminar las filas.');
-        // Si falla, recargar los datos para revertir el cambio visual
-        await loadData();
+        await loadData(currentPage.value);
     } finally {
         loading.value = false;
     }
@@ -236,6 +293,18 @@ onMounted(() => {
 .plants-view {
   position: relative;
   height: 100%;
+}
+
+.btn-outline-primary {
+  background-color: transparent;
+  border: 1px solid #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.btn-outline-primary:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
 }
 
 .loading-overlay {

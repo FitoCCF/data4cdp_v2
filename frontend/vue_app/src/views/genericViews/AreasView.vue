@@ -1,5 +1,6 @@
 <template>
   <div class="areas-view">
+    <!-- Componente ExcelGrid reutilizable para mantenimiento avanzado -->
     <ExcelGrid
       title="Mantenimiento de Áreas"
       :headers="headers"
@@ -12,11 +13,44 @@
       :serverSideFiltering="true"
       :filterData="filterData"
       @save="handleSave"
-      @delete="handleDelete"
+      @delete="confirmDeleteFromGrid"
       @pageChange="handlePageChange"
       @pageSizeChange="handlePageSizeChange"
       @filterChange="handleFilterChange"
       @sortChange="handleSortChange"
+      @rowDblClick="handleRowDblClick"
+    >
+      <template #actions-end>
+        <button 
+          type="button" 
+          class="btn btn-sm btn-outline-primary" 
+          @click="openCreateModal"
+          title="Crear área con formulario guiado y asignación de planta"
+        >
+          ➕ Nueva Área
+        </button>
+      </template>
+    </ExcelGrid>
+
+    <!-- Modal asistido para creación y edición de Áreas -->
+    <AssetSimpleModal
+      v-if="isModalOpen"
+      :isOpen="isModalOpen"
+      :entityType="'area'"
+      :itemId="selectedAreaId"
+      @close="isModalOpen = false"
+      @saved="onItemSaved"
+    />
+
+    <!-- Modal de confirmación de borrado seguro con auditoría de impacto -->
+    <SafeDeleteModal
+      v-if="isDeleteModalOpen"
+      :isOpen="isDeleteModalOpen"
+      :endpoint="'areas'"
+      :entityTitle="'Áreas'"
+      :idsToDelete="pendingDeleteIds"
+      @close="isDeleteModalOpen = false"
+      @confirmed="executeConfirmedDelete"
     />
     
     <!-- Mensaje de carga o error -->
@@ -28,6 +62,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
+import AssetSimpleModal from '../../components/AssetSimpleModal.vue';
+import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
 import { api } from '../../api';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
 import { sanitizeValue } from '../../utils/gridHelpers';
@@ -49,6 +85,41 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 const filterData = ref([]);
+
+// Modales asistidos y borrado seguro
+const isModalOpen = ref(false);
+const selectedAreaId = ref(null);
+const isDeleteModalOpen = ref(false);
+const pendingDeleteIds = ref([]);
+
+const openCreateModal = () => {
+  selectedAreaId.value = null;
+  isModalOpen.value = true;
+};
+
+const handleRowDblClick = ({ row }) => {
+  if (row && row[0]) {
+    selectedAreaId.value = row[0];
+    isModalOpen.value = true;
+  }
+};
+
+const onItemSaved = async () => {
+  isModalOpen.value = false;
+  await loadData(currentPage.value);
+  await loadFilterData();
+};
+
+const confirmDeleteFromGrid = (idsToDelete) => {
+  if (!idsToDelete || idsToDelete.length === 0) return;
+  pendingDeleteIds.value = idsToDelete;
+  isDeleteModalOpen.value = true;
+};
+
+const executeConfirmedDelete = async () => {
+  isDeleteModalOpen.value = false;
+  await handleDelete(pendingDeleteIds.value);
+};
 
 const loadFilterData = async () => {
     try {
@@ -112,7 +183,6 @@ const loadData = async (page = 1) => {
     // Cargar Áreas paginadas y TODOS los registros de Plantas en paralelo para el dropdown
     const [areasRes, plantsRes] = await Promise.all([
         api.get('areas/', { params }),
-        // Agregamos page_size: 10000 para forzar al backend a devolver todos los registros y poblar el <select> completo
         api.get('plants/', { params: { page_size: 10000 } })
     ]);
     
@@ -145,7 +215,6 @@ const loadData = async (page = 1) => {
         a.tag || '',
         a.name || '',
         a.description || '',
-        // Manejo de FK: si viene objeto {id, name} tomamos id, si viene id directo lo usamos
         (a.plant && typeof a.plant === 'object') ? a.plant.id : (a.plant || '')
     ]);
 
@@ -176,22 +245,20 @@ const handleSortChange = (sortConfig) => {
     loadData(1);
 };
 
-// Guardar cambios
+// Guardar cambios masivos en ExcelGrid
 const handleSave = async (updatedGrid) => {
   loading.value = true;
   try {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
         
-          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
             tag: sanitizeValue(row[1]),
             name: sanitizeValue(row[2]),
             description: sanitizeValue(row[3]),
-            plant: sanitizeValue(row[4]), // Aquí irá el ID de la planta seleccionado
+            plant: sanitizeValue(row[4]),
           };
 
-        // Validación básica de FK
         if (!payload.plant) delete payload.plant;
 
         if (id && String(id).trim() !== '') {
@@ -205,7 +272,7 @@ const handleSave = async (updatedGrid) => {
 
     await Promise.all(promises);
     alert('Cambios guardados correctamente.');
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
 
   } catch (err) {
@@ -217,7 +284,7 @@ const handleSave = async (updatedGrid) => {
 };
 
 /**
- * Maneja la eliminación de filas
+ * Maneja la eliminación de filas confirmadas
  * @param {Array} idsToDelete - Array de IDs a eliminar
  */
 const handleDelete = async (idsToDelete) => {
@@ -230,11 +297,12 @@ const handleDelete = async (idsToDelete) => {
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
         await loadFilterData();
+        await loadData(currentPage.value);
 
     } catch (err) {
         console.error('Error eliminando áreas:', err);
         alert('Error al eliminar las filas.');
-        await loadData();
+        await loadData(currentPage.value);
     } finally {
         loading.value = false;
     }
@@ -250,6 +318,18 @@ onMounted(() => {
 .areas-view {
   position: relative;
   height: 100%;
+}
+
+.btn-outline-primary {
+  background-color: transparent;
+  border: 1px solid #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.btn-outline-primary:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
 }
 
 .loading-overlay {

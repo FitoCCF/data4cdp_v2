@@ -1,10 +1,6 @@
 <template>
   <div class="equipments-view">
-    <!--
-      Componente ExcelGrid reutilizable
-      - columnsConfig: Configuración para dropdowns de Sistema y Área
-      - @delete: Evento para eliminar filas
-    -->
+    <!-- Componente ExcelGrid reutilizable para mantenimiento avanzado -->
     <ExcelGrid
       title="Mantenimiento de Equipos"
       :headers="headers"
@@ -17,11 +13,43 @@
       :serverSideFiltering="true"
       :filterData="filterData"
       @save="handleSave"
-      @delete="handleDelete"
+      @delete="confirmDeleteFromGrid"
       @pageChange="handlePageChange"
       @pageSizeChange="handlePageSizeChange"
       @filterChange="handleFilterChange"
       @sortChange="handleSortChange"
+      @rowDblClick="handleRowDblClick"
+    >
+      <template #actions-end>
+        <button 
+          type="button" 
+          class="btn btn-sm btn-outline-primary" 
+          @click="openCreateModal"
+          title="Crear equipo con asistente guiado y selectores en cascada"
+        >
+          ➕ Nuevo Equipo
+        </button>
+      </template>
+    </ExcelGrid>
+
+    <!-- Modal guiado para creación y edición de Equipos -->
+    <EquipmentFormModal
+      v-if="isModalOpen"
+      :isOpen="isModalOpen"
+      :equipmentId="selectedEquipmentId"
+      @close="isModalOpen = false"
+      @saved="onItemSaved"
+    />
+
+    <!-- Modal de confirmación de borrado seguro con auditoría de impacto -->
+    <SafeDeleteModal
+      v-if="isDeleteModalOpen"
+      :isOpen="isDeleteModalOpen"
+      :endpoint="'equipments'"
+      :entityTitle="'Equipos'"
+      :idsToDelete="pendingDeleteIds"
+      @close="isDeleteModalOpen = false"
+      @confirmed="executeConfirmedDelete"
     />
     
     <!-- Indicador de carga -->
@@ -35,6 +63,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
+import EquipmentFormModal from '../../components/EquipmentFormModal.vue';
+import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
 import { api } from '../../api';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
 import { sanitizeValue } from '../../utils/gridHelpers';
@@ -58,6 +88,41 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
 const filterData = ref([]);
+
+// Modales asistidos y borrado seguro
+const isModalOpen = ref(false);
+const selectedEquipmentId = ref(null);
+const isDeleteModalOpen = ref(false);
+const pendingDeleteIds = ref([]);
+
+const openCreateModal = () => {
+  selectedEquipmentId.value = null;
+  isModalOpen.value = true;
+};
+
+const handleRowDblClick = ({ row }) => {
+  if (row && row[0]) {
+    selectedEquipmentId.value = row[0];
+    isModalOpen.value = true;
+  }
+};
+
+const onItemSaved = async () => {
+  isModalOpen.value = false;
+  await loadData(currentPage.value);
+  await loadFilterData();
+};
+
+const confirmDeleteFromGrid = (idsToDelete) => {
+  if (!idsToDelete || idsToDelete.length === 0) return;
+  pendingDeleteIds.value = idsToDelete;
+  isDeleteModalOpen.value = true;
+};
+
+const executeConfirmedDelete = async () => {
+  isDeleteModalOpen.value = false;
+  await handleDelete(pendingDeleteIds.value);
+};
 
 const loadFilterData = async () => {
     try {
@@ -98,13 +163,11 @@ const loadData = async (page = 1) => {
   error.value = null;
 
   try {
-    // Configurar parámetros de la petición (Paginación + Filtros + Sort)
     const params = { 
         page, 
         page_size: pageSize.value 
     };
 
-    // Mapeo seguro de índices de columna a campos del backend Django
     const colToFieldMap = {
         0: 'id',
         1: 'tag',
@@ -114,29 +177,23 @@ const loadData = async (page = 1) => {
         5: 'area'
     };
 
-    // Aplicar filtros dinámicos (búsqueda exacta/in usando DjangoFilters/DRF)
     for (const [colIndex, values] of Object.entries(currentFilters.value)) {
         const fieldName = colToFieldMap[colIndex];
         if (fieldName && values.length > 0) {
-            // Ejemplo: si seleccionaron Área = 'Área 1', mandamos ?area__in=Area1,Area2
-            // Ojo: Esto requiere que el backend tenga configurado DjangoFilterBackend para estos campos
             params[`${fieldName}__in`] = values.join(','); 
         }
     }
 
-    // Aplicar ordenamiento dinámico
     if (currentSort.value.colIndex !== null) {
         const fieldName = colToFieldMap[currentSort.value.colIndex];
         if (fieldName) {
-            // DRF usa ?ordering=campo o ?ordering=-campo
             params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
         }
     }
 
-    // Carga paralela de recursos: Equipos (Paginados), Sistemas y Áreas (Listas enteras para Dropdowns)
+    // Carga paralela de recursos: Equipos (Paginados), Sistemas y Áreas para Dropdowns
     const [eqRes, sysRes, areaRes] = await Promise.all([
         api.get('equipments/', { params }),
-        // Agregamos page_size: 10000 a ambas relaciones para asegurar que el dropdown muestre todos los items disponibles
         api.get('systems/', { params: { page_size: 10000 } }),
         api.get('areas/', { params: { page_size: 10000 } })
     ]);
@@ -168,7 +225,6 @@ const loadData = async (page = 1) => {
         e.tag || '',
         e.name || '',
         e.description || '',
-        // Manejo de FKs: extraer ID si viene objeto completo
         (e.system && typeof e.system === 'object') ? e.system.id : (e.system || ''),
         (e.area && typeof e.area === 'object') ? e.area.id : (e.area || '')
     ]);
@@ -187,21 +243,21 @@ const handlePageChange = (newPage) => {
 
 const handlePageSizeChange = (newSize) => {
     pageSize.value = newSize;
-    loadData(1); // Volver a la primera página al cambiar el tamaño
+    loadData(1);
 };
 
 const handleFilterChange = (filters) => {
     currentFilters.value = filters;
-    loadData(1); // Volver a la primera página al aplicar filtros
+    loadData(1);
 };
 
 const handleSortChange = (sortConfig) => {
     currentSort.value = sortConfig;
-    loadData(1); // Volver a la primera página al ordenar
+    loadData(1);
 };
 
 /**
- * Maneja el guardado de cambios
+ * Maneja el guardado de cambios masivos en ExcelGrid
  */
 const handleSave = async (updatedGrid) => {
   loading.value = true;
@@ -209,20 +265,17 @@ const handleSave = async (updatedGrid) => {
     const promises = updatedGrid.map(async (row) => {
         const id = row[0];
         
-          // Construimos el payload de guardado usando la utilidad de sanitización compartida
           const payload = {
             tag: sanitizeValue(row[1]),
             name: sanitizeValue(row[2]),
             description: sanitizeValue(row[3]),
-            system: sanitizeValue(row[4]), // ID del sistema seleccionado
-            area: sanitizeValue(row[5]), // ID del área seleccionada
+            system: sanitizeValue(row[4]),
+            area: sanitizeValue(row[5]),
           };
 
-        // Limpiar FKs vacías para evitar errores de validación
         if (!payload.system) delete payload.system;
         if (!payload.area) delete payload.area;
 
-        // Actualizar (PUT) o Crear (POST)
         if (id && String(id).trim() !== '') {
             return api.put(`equipments/${id}/`, payload);
         } else {
@@ -234,7 +287,7 @@ const handleSave = async (updatedGrid) => {
 
     await Promise.all(promises);
     alert('Cambios guardados correctamente.');
-    await loadData();
+    await loadData(currentPage.value);
     await loadFilterData();
 
   } catch (err) {
@@ -246,7 +299,7 @@ const handleSave = async (updatedGrid) => {
 };
 
 /**
- * Maneja la eliminación de filas
+ * Maneja la eliminación de filas confirmadas
  * @param {Array} idsToDelete - Array de IDs a eliminar
  */
 const handleDelete = async (idsToDelete) => {
@@ -259,11 +312,12 @@ const handleDelete = async (idsToDelete) => {
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
         await loadFilterData();
+        await loadData(currentPage.value);
 
     } catch (err) {
         console.error('Error eliminando equipos:', err);
         alert('Error al eliminar las filas.');
-        await loadData();
+        await loadData(currentPage.value);
     } finally {
         loading.value = false;
     }
@@ -279,6 +333,18 @@ onMounted(() => {
 .equipments-view {
   position: relative;
   height: 100%;
+}
+
+.btn-outline-primary {
+  background-color: transparent;
+  border: 1px solid #3b82f6;
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.btn-outline-primary:hover {
+  background-color: #3b82f6;
+  color: #ffffff;
 }
 
 .loading-overlay {

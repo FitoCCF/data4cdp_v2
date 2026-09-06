@@ -1625,24 +1625,63 @@ onMounted(() => {
   .report-table {
     width: 100% !important;
     border-collapse: collapse !important;
-    margin-bottom: 6px !important;
+    margin-bottom: 4px !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .report-table td {
     border: 1px solid #000000 !important;
-    padding: 3px 5px !important;
+    padding: 2px 4px !important;
+  }
+
+  .corporate-logo {
+    max-height: 40px !important;
+    max-width: 130px !important;
+  }
+
+  .control-logo {
+    max-height: 40px !important;
+    max-width: 85px !important;
+  }
+
+  .title-text {
+    font-size: 9.5pt !important;
+    line-height: 1.2 !important;
+  }
+
+  .selected-equipment-title {
+    font-size: 9pt !important;
+    margin-top: 2px !important;
+  }
+
+  .code-cell {
+    width: 150px !important;
+    min-width: 150px !important;
+    padding: 3px 6px !important;
+  }
+
+  .code-box {
+    font-size: 8pt !important;
+    line-height: 1.3 !important;
+  }
+
+  .label-header,
+  .value-header,
+  .label-cell,
+  .value-cell {
+    font-size: 8pt !important;
   }
 
   .table-container {
-    margin-top: 5px !important;
+    margin-top: 4px !important;
     width: 100% !important;
     overflow: visible !important;
   }
 
   .table-container :deep(.table-wrapper) {
     overflow: visible !important;
+    border: none !important;
   }
 
   .table-container :deep(.excel-container) {
@@ -1650,36 +1689,73 @@ onMounted(() => {
     box-shadow: none !important;
     border: none !important;
     background: transparent !important;
+    padding: 0 !important;
+    height: auto !important;
   }
 
   .table-container :deep(.excel-table) {
     width: 100% !important;
-    font-size: 7.5pt !important;
+    font-size: 7pt !important;
     border-collapse: collapse !important;
+    table-layout: auto !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
+  /* Ocultar flecha/icono de filtro de cada columna en impresión */
+  .table-container :deep(.filter-icon),
+  .table-container :deep(.filter-menu),
+  .table-container :deep(.resizer) {
+    display: none !important;
+  }
+
+  /* Centrado de cabecera */
+  .table-container :deep(.header-content) {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+
+  /* Texto de cabecera más pequeño y en una sola línea (evita saltos de línea) */
+  .table-container :deep(.header-text) {
+    font-size: 6.8pt !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    text-align: center !important;
+  }
+
+  /* Cabeceras de columnas (CÓDIGO, MUESTRA, SN, PESO TOTAL, etc.) */
   .table-container :deep(.excel-table th) {
     background-color: #e2f0d9 !important;
     border: 1px solid #000000 !important;
     color: #000000 !important;
-    padding: 2px 4px !important;
+    padding: 2px 2px !important;
+    font-size: 6.8pt !important;
+    font-weight: bold !important;
+    line-height: 1.15 !important;
+    min-width: unset !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .table-container :deep(.excel-table th.group-header-cell) {
     background-color: #d9d9d9 !important;
+    font-size: 7pt !important;
+    padding: 2px 2px !important;
+    min-width: unset !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
   .table-container :deep(.excel-table td) {
-    font-size: 7.5pt !important;
-    height: 20px !important;
-    padding: 2px 4px !important;
+    font-size: 7pt !important;
+    height: 18px !important;
+    padding: 1px 2px !important;
     border: 1px solid #000000 !important;
+    min-width: unset !important;
+    white-space: nowrap !important;
   }
 }
 </style>
@@ -1712,11 +1788,15 @@ onMounted(() => {
     background-color: #ffffff !important;
   }
 
-  /* Ocultar barra superior de ExcelGrid ("Detalle de Muestreo de Ensayos", "SOLO LECTURA", "Habilitar Edición") */
+  /* Ocultar barra superior de ExcelGrid ("Detalle de Muestreo de Ensayos", "SOLO LECTURA", "Habilitar Edición", filtros, paginación) */
   .excel-container > .toolbar,
   .excel-container .actions,
   .excel-container .title-section,
-  .excel-container .status-badge {
+  .excel-container .status-badge,
+  .excel-container .filter-icon,
+  .excel-container .filter-menu,
+  .excel-container .pagination-controls,
+  .filter-icon {
     display: none !important;
   }
 

@@ -16,23 +16,11 @@
       </button>
     </div>
 
-    <!-- Buscador rápido de módulos (visible solo si está expandido) -->
-    <div class="search-box" v-if="!isCollapsed">
-      <span class="search-icon">🔍</span>
-      <input 
-        type="text" 
-        v-model="searchQuery" 
-        placeholder="Buscar vista o tabla..." 
-        class="search-input"
-      />
-      <button v-if="searchQuery" @click="searchQuery = ''" class="clear-search-btn">✕</button>
-    </div>
-
     <!-- Contenedor con scroll de secciones -->
     <nav class="sidebar-nav">
       <!-- Iteración por cada grupo temático definido en menuGroups -->
       <div 
-        v-for="group in filteredGroups" 
+        v-for="group in menuGroups" 
         :key="group.id" 
         class="nav-group"
       >
@@ -43,16 +31,15 @@
           @click="toggleGroup(group.id)"
           :title="group.title"
         >
-          <span class="group-icon">{{ group.icon }}</span>
           <span class="group-title-text" v-if="!isCollapsed">{{ group.title }}</span>
           <span class="group-arrow" v-if="!isCollapsed">
             {{ openGroups[group.id] ? '▾' : '▸' }}
           </span>
         </button>
 
-        <!-- Lista de enlaces del grupo (se muestra si está abierto o si hay búsqueda activa) -->
+        <!-- Lista de enlaces del grupo (se muestra si está abierto) -->
         <ul 
-          v-show="isCollapsed ? false : (openGroups[group.id] || searchQuery.trim() !== '')" 
+          v-show="!isCollapsed && openGroups[group.id]" 
           class="group-items"
         >
           <li v-for="item in group.items" :key="item.path" class="nav-item">
@@ -63,14 +50,6 @@
               exact-active-class="exact-active-link"
             >
               <span class="item-name">{{ item.name }}</span>
-              <!-- Badge indicativo de la naturaleza de la vista -->
-              <span 
-                v-if="item.badge" 
-                class="item-badge" 
-                :class="'badge-' + item.badge.toLowerCase()"
-              >
-                {{ item.badge }}
-              </span>
             </router-link>
           </li>
         </ul>
@@ -85,7 +64,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 
 // Control de colapso global del sidebar
 const isCollapsed = ref(false);
@@ -94,9 +73,6 @@ const toggleSidebar = () => {
   // Disparamos un evento personalizado en window para que MainView se entere del cambio de ancho
   window.dispatchEvent(new CustomEvent('sidebar-toggle', { detail: { isCollapsed: isCollapsed.value } }));
 };
-
-// Término de búsqueda en el sidebar
-const searchQuery = ref('');
 
 // Estado de acordeón de cada grupo
 const openGroups = ref({
@@ -120,83 +96,56 @@ const menuGroups = [
   {
     id: 'dashboards',
     title: 'Paneles & Control',
-    icon: '📊',
     items: [
-      { name: 'Tareas Semanales', path: '/weeklytasks', badge: 'Dashboard' },
-      { name: 'Calendario Mensual', path: '/monthly-calendar', badge: 'Dashboard' },
-      { name: 'Rotación de Cuadrillas', path: '/calendario-grupos', badge: 'Turnos' },
-      { name: 'Muestreo Courier', path: '/sampling', badge: 'Reporte' }
+      { name: 'Tareas Semanales', path: '/weeklytasks' },
+      { name: 'Calendario Mensual', path: '/monthly-calendar' },
+      { name: 'Rotación de Cuadrillas', path: '/calendario-grupos' },
+      { name: 'Muestreo Courier', path: '/sampling' }
     ]
   },
   {
     id: 'activos',
     title: 'Estructura de Activos',
-    icon: '🏗️',
     items: [
-      { name: 'Plantas', path: '/plants', badge: 'Excel' },
-      { name: 'Áreas', path: '/areas', badge: 'Excel' },
-      { name: 'Sistemas', path: '/sistems', badge: 'Excel' }, // Mantiene la ruta '/sistems' original
-      { name: 'Equipos', path: '/equipments', badge: 'Excel' }
+      { name: 'Plantas', path: '/plants' },
+      { name: 'Áreas', path: '/areas' },
+      { name: 'Sistemas', path: '/sistems' }, // Mantiene la ruta '/sistems' original
+      { name: 'Equipos', path: '/equipments' }
     ]
   },
   {
     id: 'mantenimiento',
     title: 'Gestión Mantenimiento',
-    icon: '🛠️',
     items: [
-      { name: 'Plantillas Preventivas', path: '/tasks', badge: 'Pautas' },
-      { name: 'Tareas Programadas', path: '/stasks', badge: 'Excel' },
-      { name: 'Tareas Correctivas', path: '/ctasks', badge: 'Fallas' }
+      { name: 'Plantillas Preventivas', path: '/tasks' },
+      { name: 'Tareas Programadas', path: '/stasks' },
+      { name: 'Tareas Correctivas', path: '/ctasks' }
     ]
   },
   {
     id: 'laboratorio',
     title: 'Metalurgia & Calidad',
-    icon: '🧪',
     items: [
-      { name: 'Muestras Físicas', path: '/samples', badge: 'Excel' },
-      { name: 'Ensayos Químicos', path: '/assays', badge: 'Excel' }
+      { name: 'Muestras Físicas', path: '/samples' },
+      { name: 'Ensayos Químicos', path: '/assays' }
     ]
   },
   {
     id: 'personal',
     title: 'Personal & Turnos',
-    icon: '👥',
     items: [
-      { name: 'Usuarios', path: '/users', badge: 'Excel' },
-      { name: 'Grupos / Cuadrillas', path: '/userp', badge: 'Excel' }
+      { name: 'Usuarios', path: '/users' },
+      { name: 'Grupos / Cuadrillas', path: '/userp' }
     ]
   },
   {
     id: 'utilitarios',
     title: 'Entorno de Pruebas',
-    icon: '⚙️',
     items: [
-      { name: 'Prueba Cuadrícula', path: '/excel-test', badge: 'Lab' }
+      { name: 'Prueba Cuadrícula', path: '/excel-test' }
     ]
   }
 ];
-
-/**
- * Filtra los grupos e ítems reactivamente según lo que escribe el usuario en la barra de búsqueda.
- */
-const filteredGroups = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase();
-  if (!query) return menuGroups;
-
-  return menuGroups
-    .map(group => {
-      const matchingItems = group.items.filter(item => 
-        item.name.toLowerCase().includes(query) || 
-        (item.badge && item.badge.toLowerCase().includes(query))
-      );
-      return {
-        ...group,
-        items: matchingItems
-      };
-    })
-    .filter(group => group.items.length > 0);
-});
 </script>
 
 <style scoped>
@@ -267,50 +216,6 @@ const filteredGroups = computed(() => {
   color: #ffffff;
 }
 
-/* Buscador de vistas */
-.search-box {
-  padding: 8px 12px;
-  position: relative;
-  background-color: #1e293b;
-  border-bottom: 1px solid #334155;
-}
-
-.search-input {
-  width: 100%;
-  box-sizing: border-box;
-  background-color: #0f172a;
-  border: 1px solid #334155;
-  border-radius: 6px;
-  padding: 6px 26px 6px 28px;
-  color: #f8fafc;
-  font-size: 0.8rem;
-  outline: none;
-  transition: border-color 0.2s;
-}
-
-.search-input:focus {
-  border-color: #38bdf8;
-}
-
-.search-icon {
-  position: absolute;
-  left: 18px;
-  top: 14px;
-  font-size: 0.75rem;
-  color: #64748b;
-}
-
-.clear-search-btn {
-  position: absolute;
-  right: 18px;
-  top: 13px;
-  background: none;
-  border: none;
-  color: #94a3b8;
-  cursor: pointer;
-  font-size: 0.75rem;
-}
-
 /* Navegación y Grupos */
 .sidebar-nav {
   flex: 1;
@@ -326,7 +231,6 @@ const filteredGroups = computed(() => {
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
   padding: 8px 16px;
   background: none;
   border: none;
@@ -343,10 +247,6 @@ const filteredGroups = computed(() => {
 .group-header:hover {
   background-color: #334155;
   color: #f1f5f9;
-}
-
-.group-icon {
-  font-size: 1rem;
 }
 
 .group-title-text {
@@ -372,7 +272,6 @@ const filteredGroups = computed(() => {
 .nav-link {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   padding: 7px 16px 7px 38px;
   color: #cbd5e1;
   text-decoration: none;
@@ -392,43 +291,6 @@ const filteredGroups = computed(() => {
   color: #ffffff !important;
   font-weight: 600;
   border-left-color: #38bdf8;
-}
-
-/* Badges indicativos */
-.item-badge {
-  font-size: 0.65rem;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
-
-.badge-dashboard {
-  background-color: #065f46;
-  color: #6ee7b7;
-}
-
-.badge-excel {
-  background-color: #1e3a8a;
-  color: #93c5fd;
-}
-
-.badge-turnos,
-.badge-pautas {
-  background-color: #78350f;
-  color: #fcd34d;
-}
-
-.badge-fallas {
-  background-color: #7f1d1d;
-  color: #fca5a5;
-}
-
-.badge-reporte,
-.badge-lab {
-  background-color: #475569;
-  color: #e2e8f0;
 }
 
 /* Pie del Sidebar */

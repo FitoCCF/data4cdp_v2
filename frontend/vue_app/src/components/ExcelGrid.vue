@@ -932,7 +932,9 @@ onMounted(() => { initGrid(); });
   .toolbar,
   .modal-overlay,
   .filter-menu,
-  .resizer {
+  .filter-icon,
+  .resizer,
+  .pagination-controls {
     display: none !important;
   }
   .excel-container {
@@ -940,9 +942,39 @@ onMounted(() => { initGrid(); });
     box-shadow: none !important;
     padding: 0 !important;
     background: transparent !important;
+    height: auto !important;
   }
   .table-wrapper {
     overflow: visible !important;
+    border: none !important;
+  }
+  .excel-table {
+    width: 100% !important;
+    table-layout: auto !important;
+  }
+  .excel-table th,
+  .excel-table td {
+    min-width: unset !important;
+    font-size: 7.5pt !important;
+    padding: 2px 3px !important;
+  }
+  .excel-table th {
+    font-size: 7pt !important;
+    line-height: 1.15 !important;
+    font-weight: bold !important;
+  }
+  .header-content {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+  .header-text {
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    text-align: center !important;
+    font-size: inherit !important;
   }
 }
 </style>

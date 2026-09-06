@@ -266,8 +266,8 @@ const colKeys = [
 
 // Configuración de los grupos de cabeceras en base a colspans del formulario físico
 const headerGroups = [
-  { label: '', colspan: 10 }, // Las primeras 10 columnas (incluyendo la oculta) no tienen etiqueta
-  { label: 'ELEMENTOS POR ANALIZAR', colspan: 5 } // Las últimas 5 columnas (porcentajes de elementos)
+  { label: '', colspan: 9 }, // Las 9 columnas visibles previas a elementos (CÓDIGO hasta % SÓLIDOS)
+  { label: 'ELEMENTOS POR ANALIZAR', colspan: 5 } // %Fe, %Cu, %Zn, %Mo, %Ins (5 columnas)
 ];
 
 // --- Propiedades Computadas ---
@@ -1522,12 +1522,14 @@ onMounted(() => {
   font-weight: bold !important;
   border: 1px solid #000000 !important;
   text-align: center !important;
-  font-size: 0.85rem !important;
+  font-size: 0.75rem !important;
+  padding: 3px 4px !important;
 }
 
 /* El grupo de cabecera 'ELEMENTOS POR ANALIZAR' (Fondo gris como en la imagen) */
 .table-container :deep(.excel-table th.group-header-cell) {
   background-color: #d9d9d9 !important; 
+  font-size: 0.75rem !important;
 }
 
 /* El primer grupo de cabecera que es vacío para alinear las columnas del lado izquierdo */
@@ -1719,7 +1721,7 @@ onMounted(() => {
 
   /* Texto de cabecera más pequeño y en una sola línea (evita saltos de línea) */
   .table-container :deep(.header-text) {
-    font-size: 6.8pt !important;
+    font-size: 6pt !important;
     white-space: nowrap !important;
     overflow: visible !important;
     text-overflow: clip !important;
@@ -1731,10 +1733,10 @@ onMounted(() => {
     background-color: #e2f0d9 !important;
     border: 1px solid #000000 !important;
     color: #000000 !important;
-    padding: 2px 2px !important;
-    font-size: 6.8pt !important;
+    padding: 1px 1px !important;
+    font-size: 6pt !important;
     font-weight: bold !important;
-    line-height: 1.15 !important;
+    line-height: 1.1 !important;
     min-width: unset !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
@@ -1742,8 +1744,8 @@ onMounted(() => {
 
   .table-container :deep(.excel-table th.group-header-cell) {
     background-color: #d9d9d9 !important;
-    font-size: 7pt !important;
-    padding: 2px 2px !important;
+    font-size: 6.2pt !important;
+    padding: 1px 1px !important;
     min-width: unset !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;

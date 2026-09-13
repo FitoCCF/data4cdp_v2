@@ -85,20 +85,7 @@
           @pageSizeChange="handlePageSizeChange"
           @filterChange="handleFilterChange"
           @sortChange="handleSortChange"
-        >
-          <!-- Botón en la barra de herramientas para autollenar Chemical ID correlativo -->
-          <template #actions-end>
-            <button
-              type="button"
-              class="btn-autofill"
-              @click="autoFillChemicalIds(true)"
-              :disabled="loading || !selectedEquipmentId"
-              title="Autollenar correlativos en las filas sin Chemical ID a partir del último valor registrado en la planta"
-            >
-              🔢 Autollenar Chemical ID
-            </button>
-          </template>
-        </ExcelGrid>
+        />
     </div>
 
     <!-- Mensaje cuando no hay equipo seleccionado -->
@@ -180,8 +167,13 @@ const isExporting = ref(false);
 // ============================================================================
 const columnsConfig = computed(() => {
     // La clave '23' corresponde al índice de 'sample' (Muestra) en colKeys
+    // La clave '22' corresponde a 'chemical_id' (Chemical ID) - Habilita incremento secuencial +1 estilo Excel
+    // La clave '23' corresponde al índice de 'sample' (Muestra) en colKeys
     // La clave '31' corresponde al índice de 'user' (Usuario) en colKeys
     return {
+        22: {
+            autoIncrementDown: true
+        },
         23: {
             type: 'select',
             options: samplesList.value.map(s => ({
@@ -371,101 +363,7 @@ const loadData = async (page = 1) => {
                 return value;
             });
         });
-
-        // Autollenado automático hacia adelante de chemical_id si existen filas nuevas sin código
-        await autoFillChemicalIds(false);
     }); // Sin mensaje personalizado; useApi.js reportará el estado real del servidor HTTP
-};
-
-/**
- * Autocompleta de manera correlativa y hacia adelante los valores faltantes de 'chemical_id'
- * (columna index 22) tomando como base el MAX(chemical_id) de la planta asociada al analizador seleccionado.
- * 
- * Regla de correlatividad por Planta:
- * - Concentradora 1 (Courier Flotacion C1 y Courier Molibdeno 1): serie ~26,000.
- * - Concentradora 2 (Courier Flotacion C2 y Courier Molibdeno C2): serie ~10,000.
- * 
- * Edición manual posterior:
- * - Las celdas de 'Chemical ID' (columna 22) en ExcelGrid son editables en modo edición.
- *   El usuario puede modificar cualquier código antes de presionar 'Guardar Cambios'.
- * 
- * @param {boolean} notifyUser - Si es true, notifica mediante alert al usuario o pide confirmación si ya están llenos.
- */
-const autoFillChemicalIds = async (notifyUser = false) => {
-    if (!selectedEquipmentId.value || !assaysData.value || assaysData.value.length === 0) {
-        if (notifyUser) {
-            alert('No hay ensayos cargados o no hay un analizador seleccionado.');
-        }
-        return;
-    }
-
-    const chemicalIdColIndex = 22; // Índice de 'chemical_id' en colKeys
-
-    // Identificar las filas de la vista actual que no tienen Chemical ID asignado
-    const emptyRowIndices = [];
-    assaysData.value.forEach((row, idx) => {
-        const val = row[chemicalIdColIndex];
-        // Si notifyUser es false (llamada automática), sólo autollenamos filas nuevas sin ID en BD (row[0] === '')
-        // Si notifyUser es true (clic en botón), llenamos cualquier fila con chemical_id vacío
-        if (val === '' || val === null || val === undefined) {
-            if (notifyUser || row[0] === '' || row[0] === 'nuevo') {
-                emptyRowIndices.push(idx);
-            }
-        }
-    });
-
-    if (emptyRowIndices.length === 0 && !notifyUser) {
-        return;
-    }
-
-    try {
-        // Consultamos al backend el siguiente código correlativo disponible para la planta
-        const res = await api.get('assays/next-chemical-id/', {
-            params: { equipment_id: selectedEquipmentId.value }
-        });
-
-        if (!res.data || !res.data.next_chemical_id) {
-            console.warn('Respuesta inesperada de next-chemical-id:', res.data);
-            return;
-        }
-
-        const nextBaseId = res.data.next_chemical_id;
-
-        if (emptyRowIndices.length > 0) {
-            // Asignamos números correlativos secuenciales comenzando desde nextBaseId
-            let currentSeq = nextBaseId;
-            emptyRowIndices.forEach(idx => {
-                assaysData.value[idx][chemicalIdColIndex] = currentSeq++;
-            });
-
-            // Disparamos reactividad para que ExcelGrid actualice sus celdas
-            assaysData.value = [...assaysData.value];
-
-            if (notifyUser) {
-                alert(`✅ Se autollenaron ${emptyRowIndices.length} registro(s) con Chemical ID correlativo iniciando en ${nextBaseId}.\nPuedes editar cualquier valor en la columna 'Chemical ID' antes de presionar 'Guardar Cambios'.`);
-            }
-        } else if (notifyUser) {
-            // Si el usuario presionó el botón pero todos ya tienen código, ofrecer opción de reasignar
-            const confirmReassign = confirm(
-                `Todos los ${assaysData.value.length} ensayos visibles ya cuentan con un Chemical ID.\n\n` +
-                `¿Deseas recalcular y reasignar correlativos secuenciales a partir del próximo código de la planta (${nextBaseId})?`
-            );
-
-            if (confirmReassign) {
-                let currentSeq = nextBaseId;
-                assaysData.value.forEach(row => {
-                    row[chemicalIdColIndex] = currentSeq++;
-                });
-                assaysData.value = [...assaysData.value];
-                alert(`✅ Se reasignaron ${assaysData.value.length} registro(s) correlativos iniciando en ${nextBaseId}.`);
-            }
-        }
-    } catch (err) {
-        console.error('Error al autollenar chemical_id:', err);
-        if (notifyUser) {
-            alert('Error al consultar el siguiente Chemical ID disponible en el servidor.');
-        }
-    }
 };
 
 // --- Manejadores de Eventos del Componente ExcelGrid ---
@@ -479,6 +377,40 @@ const handleSortChange = (sortConfig) => { currentSort.value = sortConfig; loadD
 // ============================================================================
 
 const handleSave = async (updatedGrid) => {
+    // 1. Validación estricta en el cliente: No se pueden repetir códigos de laboratorio en la tabla actual
+    const chemicalIdColIndex = 22; // Índice de 'chemical_id' en colKeys
+    const chemicalIdCounts = {};
+
+    for (let i = 0; i < updatedGrid.length; i++) {
+        const row = updatedGrid[i];
+        if (row.isSummary) continue;
+        const rawCode = row[chemicalIdColIndex];
+        if (rawCode !== '' && rawCode !== null && rawCode !== undefined) {
+            const codeStr = String(rawCode).trim();
+            if (codeStr !== '') {
+                if (chemicalIdCounts[codeStr]) {
+                    chemicalIdCounts[codeStr].push(i + 1);
+                } else {
+                    chemicalIdCounts[codeStr] = [i + 1];
+                }
+            }
+        }
+    }
+
+    const duplicates = Object.entries(chemicalIdCounts).filter(([_, rows]) => rows.length > 1);
+    if (duplicates.length > 0) {
+        const dupDetails = duplicates
+            .map(([code, rows]) => `• Chemical ID '${code}' repetido en las filas: ${rows.join(', ')}`)
+            .join('\n');
+        alert(
+            `⚠️ No se pueden guardar los cambios.\n\n` +
+            `No se pueden repetir códigos de laboratorio tanto en el pasado como en el futuro:\n` +
+            `${dupDetails}\n\n` +
+            `Por favor, asegúrate de que cada ensayo tenga un Chemical ID único antes de guardar.`
+        );
+        return;
+    }
+
     try {
         // Envolvemos exclusivamente las peticiones que impactan la BD
         await execute(async () => {
@@ -501,8 +433,23 @@ const handleSave = async (updatedGrid) => {
             await loadFilterData();
         });
     } catch (err) {
-        // Conservamos solo la alerta de UI y el catch genérico de Axios lo maneja useApi
-        alert('Error al guardar. Revisa el mensaje de error en pantalla.');
+        let backendMsg = '';
+        if (err.response?.data) {
+            if (typeof err.response.data === 'string') {
+                backendMsg = err.response.data;
+            } else if (err.response.data.chemical_id) {
+                backendMsg = Array.isArray(err.response.data.chemical_id)
+                    ? err.response.data.chemical_id.join('\n')
+                    : err.response.data.chemical_id;
+            } else if (err.response.data.detail) {
+                backendMsg = err.response.data.detail;
+            } else {
+                backendMsg = Object.entries(err.response.data)
+                    .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+                    .join('\n');
+            }
+        }
+        alert(`⚠️ Error al guardar los cambios:\n\n${backendMsg || err.message || 'Error en el servidor.'}`);
     }
 };
 
@@ -862,36 +809,6 @@ onMounted(() => {
   background-color: #94a3b8;
   cursor: not-allowed;
   opacity: 0.7;
-}
-
-/* Botón para autollenar Chemical ID correlativo */
-.btn-autofill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background-color: #7c3aed;
-  color: #ffffff;
-  border: 1px solid #6d28d9;
-  border-radius: 4px;
-  padding: 4px 10px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.btn-autofill:hover:not(:disabled) {
-  background-color: #6d28d9;
-}
-
-.btn-autofill:disabled {
-  background-color: #e0e0e0;
-  color: #9e9e9e;
-  border-color: #bdbdbd;
-  cursor: not-allowed;
-  box-shadow: none;
 }
 
 .grid-container {

@@ -201,3 +201,12 @@ tr:hover {
 .btn-gray:not(:disabled):hover {
   background: #475569;
 }
+
+/* Variante: PÚRPURA (Serie / Autoincremento estilo Excel) */
+.btn-purple {
+  background: #7c3aed;
+}
+
+.btn-purple:not(:disabled):hover {
+  background: #6d28d9;
+}

@@ -158,6 +158,28 @@ class AssaySerializer(serializers.ModelSerializer):
         model = Assay
         fields = '__all__'
 
+    def validate_chemical_id(self, value):
+        """
+        Valida que el chemical_id no esté repetido en la base de datos (ni en el pasado ni en el futuro).
+        Si el valor ya existe en otro ensayo, rechaza la operación con un error explícito.
+        """
+        if value is not None:
+            qs = Assay.objects.filter(chemical_id=value)
+            # Si estamos editando un ensayo existente (PUT/PATCH), excluimos la instancia actual
+            if self.instance and self.instance.pk:
+                qs = qs.exclude(id=self.instance.id)
+            
+            existing = qs.first()
+            if existing:
+                fecha_str = existing.date.strftime("%d/%m/%Y") if existing.date else "N/A"
+                muestra_str = existing.sample.name if existing.sample else f"Muestra #{existing.sample_id}"
+                raise serializers.ValidationError(
+                    f"El código de laboratorio '{value}' ya existe en el sistema "
+                    f"(registrado en el ensayo ID {existing.id} el {fecha_str} para '{muestra_str}'). "
+                    f"No se pueden repetir códigos de laboratorio en el pasado ni en el futuro."
+                )
+        return value
+
     def to_representation(self, instance):
         # Convertir NaN a None para evitar errores de JSON
         data = super().to_representation(instance)

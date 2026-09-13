@@ -178,15 +178,6 @@
             >
               {{ isSyncing ? '⏳ Verificando API...' : '🔄 Sincronizar API Courier' }}
             </button>
-            <button
-              type="button"
-              class="autofill-btn no-print"
-              :disabled="loading || !selectedEquipment"
-              title="Autollenar correlativos en las muestras sin Código Químico a partir del último valor registrado en la planta"
-              @click="autoFillChemicalIds(true)"
-            >
-              🔢 Autollenar Códigos
-            </button>
           </template>
         </ExcelGrid>
       </div>
@@ -307,6 +298,10 @@ const columnsConfig = computed(() => {
     // La columna index 0 es 'ID DB' y la ocultamos mediante la clase CSS 'hidden-column'
     0: {
       headerClass: 'hidden-column'
+    },
+    // Columna index 1 es 'CÓDIGO' (chemical_id) - Habilita la funcionalidad estilo Excel de sumar +1 hacia abajo
+    1: {
+      autoIncrementDown: true
     },
     // La columna index 2 ("MUESTRA") se comporta como un dropdown con las muestras de este equipo
     2: {
@@ -434,112 +429,6 @@ const updateHeaderFieldsFromAssays = () => {
 // Variable reactiva para controlar el estado de sincronización manual con la API
 const isSyncing = ref(false);
 
-/**
- * Autocompleta automáticamente la columna 'chemical_id' (Código Químico) de manera correlativa
- * hacia adelante para los ensayos de la fecha y equipo seleccionados.
- * 
- * Regla de negocio por Planta:
- * - Concentradora 1 (Courier 1 y Courier 2): serie correlativa compartida (~26,000).
- * - Concentradora 2 (Courier 5 y Courier 6): serie correlativa compartida (~10,000).
- * 
- * Orden de asignación:
- * - Se ordenan las muestras según su 'tag' (SN) natural (S1, S2, S3... S15), replicando el orden
- *   oficial del formato físico CON-PSG-CPR-FM.005.
- * 
- * Edición manual posterior:
- * - Los valores autollenados se muestran en la columna 1 ('CÓDIGO') del ExcelGrid y pueden ser
- *   editados manualmente por el usuario en modo edición antes de presionar 'Guardar Cambios'.
- * 
- * @param {boolean} notifyUser - Si es true, notifica mediante alert o pide confirmación si ya están llenos.
- */
-const autoFillChemicalIds = async (notifyUser = false) => {
-  if (!selectedEquipment.value) return;
-
-  // Filtrar los ensayos correspondientes a la fecha y equipo actualmente seleccionados
-  const currentAssays = assays.value.filter(a => {
-    if (selectedDate.value && a.date !== selectedDate.value) return false;
-    const sampleId = a.sample && typeof a.sample === 'object' ? a.sample.id : a.sample;
-    const s = samplesById.value[sampleId];
-    let eqId = null;
-    if (s && s.equipment) {
-      eqId = (typeof s.equipment === 'object') ? s.equipment.id : s.equipment;
-    }
-    return eqId == selectedEquipment.value;
-  });
-
-  if (currentAssays.length === 0) {
-    if (notifyUser) {
-      alert('No existen ensayos para el equipo y fecha seleccionados.');
-    }
-    return;
-  }
-
-  // Identificar ensayos que no tengan chemical_id asignado
-  const emptyAssays = currentAssays.filter(a => a.chemical_id === null || a.chemical_id === '' || a.chemical_id === undefined);
-
-  try {
-    // Consultar al backend el siguiente código correlativo disponible para la planta del equipo
-    const res = await api.get('assays/next-chemical-id/', {
-      params: { equipment_id: selectedEquipment.value }
-    });
-
-    if (!res.data || !res.data.next_chemical_id) {
-      console.warn('Respuesta inesperada de next-chemical-id:', res.data);
-      return;
-    }
-
-    const nextBaseId = res.data.next_chemical_id;
-
-    // Función auxiliar para ordenar ensayos según el orden natural del tag de muestra (SN)
-    const sortAssaysBySn = (list) => {
-      return [...list].sort((a, b) => {
-        const sampleIdA = a.sample && typeof a.sample === 'object' ? a.sample.id : a.sample;
-        const sampleIdB = b.sample && typeof b.sample === 'object' ? b.sample.id : b.sample;
-        const tagA = (samplesById.value[sampleIdA]?.tag || '').toString();
-        const tagB = (samplesById.value[sampleIdB]?.tag || '').toString();
-        const snComp = tagA.localeCompare(tagB, undefined, { numeric: true, sensitivity: 'base' });
-        if (snComp !== 0) return snComp;
-        const instA = (a.instance || '').toString();
-        const instB = (b.instance || '').toString();
-        return instA.localeCompare(instB, undefined, { numeric: true, sensitivity: 'base' });
-      });
-    };
-
-    if (emptyAssays.length > 0) {
-      // Asignamos números correlativos secuenciales comenzando desde nextBaseId
-      const sortedEmpty = sortAssaysBySn(emptyAssays);
-      let currentSeq = nextBaseId;
-      sortedEmpty.forEach(assay => {
-        assay.chemical_id = currentSeq++;
-      });
-
-      if (notifyUser) {
-        alert(`✅ Se autollenaron ${emptyAssays.length} código(s) químico(s) correlativo(s) iniciando en ${nextBaseId}.\nPuedes editar cualquier valor en la columna 'CÓDIGO' antes de presionar 'Guardar Cambios'.`);
-      }
-    } else if (notifyUser) {
-      // Si el usuario presionó el botón pero todos ya tienen código, ofrecer opción de reasignar
-      const confirmReassign = confirm(
-        `Todas las ${currentAssays.length} muestras ya cuentan con un Código asignado.\n\n` +
-        `¿Deseas recalcular y reasignar correlativos secuenciales a partir del próximo código de la planta (${nextBaseId})?`
-      );
-
-      if (confirmReassign) {
-        const sortedAll = sortAssaysBySn(currentAssays);
-        let currentSeq = nextBaseId;
-        sortedAll.forEach(assay => {
-          assay.chemical_id = currentSeq++;
-        });
-        alert(`✅ Se reasignaron ${currentAssays.length} código(s) correlativo(s) iniciando en ${nextBaseId}.`);
-      }
-    }
-  } catch (err) {
-    console.error('Error al autollenar chemical_id:', err);
-    if (notifyUser) {
-      alert('Error al consultar el siguiente código químico disponible en el servidor.');
-    }
-  }
-};
-
 // Carga los ensayos EXCLUSIVAMENTE desde la base de datos local aplicando la fecha y equipo seleccionados
 const loadAssays = async () => {
   // Si no hay un equipo seleccionado en la parte superior, limpiamos los datos y evitamos la consulta
@@ -565,9 +454,6 @@ const loadAssays = async () => {
     // CONSULTA ESTRICTA Y EXCLUSIVAMENTE A LA BASE DE DATOS LOCAL (PostgreSQL/TimescaleDB)
     const res = await api.get('assays/', { params });
     assays.value = res.data.results || res.data || [];
-
-    // Autollenado automático hacia adelante de la columna chemical_id (Código Químico)
-    await autoFillChemicalIds(false);
 
     // Llamamos a la pre-población y configuración de operadores en base a los ensayos cargados
     updateHeaderFieldsFromAssays();
@@ -674,6 +560,40 @@ const loadData = async () => {
 
 // Guarda los cambios realizados en ExcelGrid (tanto inserciones como ediciones) hacia el backend
 const handleSave = async (updatedGrid) => {
+  // 1. Validación estricta en el cliente: No se pueden repetir códigos de laboratorio en la tabla actual
+  const chemicalIdColIndex = 1; // Columna 'CÓDIGO' en SamplingView
+  const chemicalIdCounts = {};
+
+  for (let i = 0; i < updatedGrid.length; i++) {
+    const row = updatedGrid[i];
+    if (row.isSummary) continue;
+    const rawCode = row[chemicalIdColIndex];
+    if (rawCode !== '' && rawCode !== null && rawCode !== undefined) {
+      const codeStr = String(rawCode).trim();
+      if (codeStr !== '') {
+        if (chemicalIdCounts[codeStr]) {
+          chemicalIdCounts[codeStr].push(i + 1);
+        } else {
+          chemicalIdCounts[codeStr] = [i + 1];
+        }
+      }
+    }
+  }
+
+  const duplicates = Object.entries(chemicalIdCounts).filter(([_, rows]) => rows.length > 1);
+  if (duplicates.length > 0) {
+    const dupDetails = duplicates
+      .map(([code, rows]) => `• Código '${code}' repetido en las filas: ${rows.join(', ')}`)
+      .join('\n');
+    alert(
+      `⚠️ No se pueden guardar los cambios.\n\n` +
+      `No se pueden repetir códigos de laboratorio tanto en el pasado como en el futuro:\n` +
+      `${dupDetails}\n\n` +
+      `Por favor, asegúrate de que cada muestra tenga un código único antes de guardar.`
+    );
+    return;
+  }
+
   try {
     await execute(async () => {
       const promises = updatedGrid.map(row => {
@@ -702,7 +622,24 @@ const handleSave = async (updatedGrid) => {
       await loadAssays();
     });
   } catch (err) {
-    alert('Error al guardar. Revisa el mensaje de error en pantalla.');
+    // Si la API rechazó la operación por código repetido en BD (pasado o futuro) u otro error de validación
+    let backendMsg = '';
+    if (err.response?.data) {
+      if (typeof err.response.data === 'string') {
+        backendMsg = err.response.data;
+      } else if (err.response.data.chemical_id) {
+        backendMsg = Array.isArray(err.response.data.chemical_id)
+          ? err.response.data.chemical_id.join('\n')
+          : err.response.data.chemical_id;
+      } else if (err.response.data.detail) {
+        backendMsg = err.response.data.detail;
+      } else {
+        backendMsg = Object.entries(err.response.data)
+          .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`)
+          .join('\n');
+      }
+    }
+    alert(`⚠️ Error al guardar los cambios:\n\n${backendMsg || err.message || 'Error en el servidor.'}`);
   }
 };
 
@@ -1600,36 +1537,6 @@ onMounted(() => {
 }
 
 .sync-courier-btn:disabled {
-  background-color: #e0e0e0;
-  color: #9e9e9e;
-  border-color: #bdbdbd;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-/* Botón para autollenar Códigos Químicos correlativos hacia adelante */
-.autofill-btn {
-  padding: 4px 10px;
-  background-color: #7c3aed;
-  color: #fff;
-  border: 1px solid #6d28d9;
-  border-radius: 4px;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.autofill-btn:hover:not(:disabled) {
-  background-color: #6d28d9;
-}
-
-.autofill-btn:disabled {
   background-color: #e0e0e0;
   color: #9e9e9e;
   border-color: #bdbdbd;

@@ -41,6 +41,17 @@
             Eliminar ({{ selectedRowIndices.size }})
           </button>
 
+          <!-- Botón estilo Excel para autoincrementar serie (+1) hacia abajo desde la celda activa -->
+          <button
+            v-if="canFillDown"
+            type="button"
+            class="btn btn-purple btn-sm"
+            @click="fillDownSeriesFromActiveCell"
+            title="Incrementar +1 hacia abajo a partir de la celda activa (Atajo: Ctrl+D o doble clic en la esquina de la celda)"
+          >
+            ⬇️ +1 Abajo
+          </button>
+
           <!-- Botón para guardar todos los cambios -->
           <button class="btn btn-green btn-sm" @click="promptSave">Guardar Cambios</button>
         </template>
@@ -160,7 +171,8 @@
                   'active': activeCell.r === visualIndex && activeCell.c === cIndex,
                   'selected': isSelected(visualIndex, cIndex),
                   'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
-                  'summary-cell': item.row.isSummary
+                  'summary-cell': item.row.isSummary,
+                  'fill-target': isFillTarget(visualIndex, cIndex)
                 }"
                 :title="typeof cell === 'object' && cell !== null ? (cell.tooltip || '') : ''"
                 :data-col-index="cIndex"
@@ -203,6 +215,15 @@
                   <span v-if="typeof cell === 'object' && cell !== null && cell.hasOvertime" class="overtime-indicator"></span>
                   {{ typeof cell === 'object' && cell !== null ? cell.value : cell }}
                 </template>
+
+                <!-- Cuadrito de arrastre estilo Excel (Fill Handle) para sumar +1 sucesivamente hacia abajo -->
+                <div
+                  v-if="isEditMode && activeCell.r === visualIndex && activeCell.c === cIndex && !item.row.isSummary && cIndex !== 0 && canFillDownCell(visualIndex, cIndex)"
+                  class="excel-fill-handle"
+                  @mousedown.stop="startFillDrag($event, visualIndex, cIndex)"
+                  @dblclick.stop="fillDownSeriesFromActiveCell"
+                  title="Arrastra hacia abajo o haz doble clic para autoincrementar +1 en las filas inferiores"
+                ></div>
               </td>
             </template>
           </tr>
@@ -713,12 +734,208 @@ const isSelected = (r, c) => {
 
 const handleKeydown = (e, visualR, c) => {
   if ((e.ctrlKey || e.metaKey) && (e.key === 'c' || e.key === 'v')) return;
+
+  // Atajo estilo Excel: Ctrl+D para autoincrementar serie (+1) hacia abajo
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+    e.preventDefault();
+    if (isEditMode.value && canFillDownCell(visualR, c)) {
+      fillDownSeriesFromActiveCell();
+    }
+    return;
+  }
+
   const maxR = filteredGrid.value.length - 1;
   const maxC = props.headers.length - 1;
   if (e.key === 'ArrowDown') { e.preventDefault(); if (visualR < maxR) focusCell(visualR + 1, c); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); if (visualR > 0) focusCell(visualR - 1, c); }
   else if (e.key === 'ArrowRight') { if(!e.shiftKey && c < maxC) focusCell(visualR, c + 1); }
   else if (e.key === 'ArrowLeft') { if(!e.shiftKey && c > 0) focusCell(visualR, c - 1); }
+};
+
+// ============================================================================
+// AUTOINCREMENTO / SERIE (+1) HACIA ABAJO ESTILO EXCEL
+// ============================================================================
+
+// Estado reactivo para el arrastre del manejador de autollenado
+const isFilling = ref(false);
+const fillStart = ref({ r: null, c: null });
+const fillEnd = ref({ r: null, c: null });
+
+/**
+ * Parsea un valor para extraer prefijo alfanumérico, valor numérico y longitud de ceros a la izquierda.
+ * Ejemplos:
+ *   "26500"   -> { prefix: "", num: 26500, pad: 0 }
+ *   "0042"    -> { prefix: "", num: 42, pad: 4 }
+ *   "LAB-101" -> { prefix: "LAB-", num: 101, pad: 3 }
+ */
+const parseSeriesValue = (val) => {
+  const str = getCellValueStr(val).trim();
+  if (!str) return null;
+
+  const match = str.match(/^(.*?)(\d+)$/);
+  if (!match) return null;
+
+  const prefix = match[1];
+  const digitsStr = match[2];
+  const num = parseInt(digitsStr, 10);
+  if (isNaN(num)) return null;
+
+  const pad = digitsStr.startsWith('0') && digitsStr.length > 1 ? digitsStr.length : 0;
+  return { prefix, num, pad };
+};
+
+/**
+ * Verifica si una celda específica permite la acción de autoincrementar hacia abajo (+1).
+ */
+const canFillDownCell = (visualR, colIndex) => {
+  if (!isEditMode.value) return false;
+  if (colIndex === null || colIndex === undefined || colIndex === 0) return false;
+  if (visualR === null || visualR === undefined || visualR >= filteredGrid.value.length) return false;
+  const item = filteredGrid.value[visualR];
+  if (!item || item.row.isSummary) return false;
+  if (isColumnSelect(colIndex)) return false;
+
+  // Si la columna está explícitamente configurada con autoIncrementDown en columnsConfig
+  if (props.columnsConfig[colIndex]?.autoIncrementDown !== undefined) {
+    return !!props.columnsConfig[colIndex].autoIncrementDown;
+  }
+
+  // O si el valor actual de la celda contiene una parte numérica parseable
+  return parseSeriesValue(item.row[colIndex]) !== null;
+};
+
+/**
+ * Propiedad computada que evalúa si la celda activa actual puede autoincrementar hacia abajo.
+ */
+const canFillDown = computed(() => {
+  if (!isEditMode.value) return false;
+  if (activeCell.value.r === null || activeCell.value.c === null) return false;
+  return canFillDownCell(activeCell.value.r, activeCell.value.c);
+});
+
+/**
+ * Función principal para autoincrementar +1 hacia abajo estilo Excel.
+ * Toma el valor de la fila inicial, extrae la base numérica y añade +1 sucesivamente
+ * a cada celda de las filas inferiores hasta la fila final especificada o el fin de la tabla.
+ *
+ * @param {number} startVisualR - Índice de la fila visual base
+ * @param {number|null} endVisualR - Índice de la fila visual final (si es null, hasta el final de la tabla)
+ * @param {number|null} colIndex - Índice de la columna a incrementar
+ */
+const fillDownSeries = (startVisualR, endVisualR = null, colIndex = null) => {
+  if (startVisualR === null || startVisualR === undefined) return;
+  if (colIndex === null || colIndex === undefined) {
+    colIndex = activeCell.value.c;
+  }
+  if (colIndex === null || colIndex === undefined || colIndex === 0) return;
+
+  // Si el usuario estaba escribiendo activamente en la celda antes de presionar el botón o arrastrar,
+  // nos aseguramos de capturar el texto actualizado del elemento activo
+  if (document.activeElement && document.activeElement.isContentEditable) {
+    const curR = activeCell.value.r;
+    const curC = activeCell.value.c;
+    if (curR !== null && curC !== null && filteredGrid.value[curR]) {
+      const origIdx = filteredGrid.value[curR].originalIndex;
+      localGrid.value[origIdx][curC] = document.activeElement.innerText;
+    }
+  }
+
+  const startItem = filteredGrid.value[startVisualR];
+  if (!startItem || startItem.row.isSummary) return;
+
+  const baseRawVal = startItem.row[colIndex];
+  const parsed = parseSeriesValue(baseRawVal);
+
+  if (!parsed) {
+    alert('Para autoincrementar (+1 hacia abajo), la celda seleccionada debe contener un número (ej: 26500, 1024, etc.).');
+    return;
+  }
+
+  // Determinar hasta qué fila visual rellenar
+  const maxVisualRow = endVisualR !== null
+    ? Math.min(endVisualR, filteredGrid.value.length - 1)
+    : filteredGrid.value.length - 1;
+
+  if (maxVisualRow <= startVisualR) {
+    return;
+  }
+
+  let incrementStep = 1;
+  for (let vr = startVisualR + 1; vr <= maxVisualRow; vr++) {
+    const item = filteredGrid.value[vr];
+    if (!item || item.row.isSummary) continue;
+
+    const nextNum = parsed.num + incrementStep;
+    const nextValStr = parsed.pad > 0 ? String(nextNum).padStart(parsed.pad, '0') : String(nextNum);
+    const finalVal = parsed.prefix ? `${parsed.prefix}${nextValStr}` : (typeof baseRawVal === 'number' ? nextNum : nextValStr);
+
+    const origIdx = item.originalIndex;
+    localGrid.value[origIdx][colIndex] = finalVal;
+
+    // Ejecutar el calculador de fila personalizado si está configurado
+    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
+      props.rowCalculator(localGrid.value[origIdx], colIndex);
+    }
+
+    incrementStep++;
+  }
+
+  // Actualizar la selección para brindar retroalimentación visual al usuario
+  selection.value.start = { r: startVisualR, c: colIndex };
+  selection.value.end = { r: maxVisualRow, c: colIndex };
+};
+
+/**
+ * Autoincrementa +1 desde la celda actualmente activa hasta la última fila de la tabla.
+ */
+const fillDownSeriesFromActiveCell = () => {
+  if (activeCell.value.r === null || activeCell.value.c === null) return;
+  fillDownSeries(activeCell.value.r, null, activeCell.value.c);
+};
+
+/**
+ * Inicia el proceso de arrastre del cuadrito estilo Excel (Fill Handle).
+ */
+const startFillDrag = (e, visualR, colIndex) => {
+  e.preventDefault();
+  isFilling.value = true;
+  fillStart.value = { r: visualR, c: colIndex };
+  fillEnd.value = { r: visualR, c: colIndex };
+
+  const onMouseMove = (moveEvent) => {
+    if (!isFilling.value) return;
+    const elem = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
+    const td = elem?.closest('td.cell');
+    if (td && td.parentElement) {
+      const rowIndex = Array.from(td.parentElement.parentElement.children).indexOf(td.parentElement);
+      if (rowIndex >= fillStart.value.r) {
+        fillEnd.value = { r: rowIndex, c: colIndex };
+      }
+    }
+  };
+
+  const onMouseUp = () => {
+    window.removeEventListener('mousemove', onMouseMove);
+    window.removeEventListener('mouseup', onMouseUp);
+    if (isFilling.value && fillEnd.value.r > fillStart.value.r) {
+      fillDownSeries(fillStart.value.r, fillEnd.value.r, fillStart.value.c);
+    }
+    isFilling.value = false;
+    fillStart.value = { r: null, c: null };
+    fillEnd.value = { r: null, c: null };
+  };
+
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mouseup', onMouseUp);
+};
+
+/**
+ * Evalúa si una celda visual dada es parte del rango actual que está siendo arrastrado para autollenar.
+ */
+const isFillTarget = (visualR, colIndex) => {
+  if (!isFilling.value || fillStart.value.r === null || fillEnd.value.r === null) return false;
+  if (colIndex !== fillStart.value.c) return false;
+  return visualR > fillStart.value.r && visualR <= fillEnd.value.r;
 };
 
 const focusCell = (visualR, c) => {
@@ -882,6 +1099,45 @@ onMounted(() => { initGrid(); });
 .cell:focus { border: 2px solid #3b82f6; z-index: 5; }
 .cell.selected { background-color: rgba(59, 130, 246, 0.15); }
 .cell.selected.active { background-color: white; border: 2px solid #3b82f6; }
+.cell.active { overflow: visible !important; z-index: 20; }
+
+/* Cuadro de arrastre estilo Excel (Fill Handle) */
+.excel-fill-handle {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 8px;
+  height: 8px;
+  background-color: #2563eb;
+  border: 1px solid #ffffff;
+  cursor: crosshair;
+  z-index: 30;
+  box-sizing: border-box;
+}
+
+.excel-fill-handle:hover {
+  background-color: #1d4ed8;
+  transform: scale(1.25);
+}
+
+/* Resaltado visual mientras se arrastra el cuadro de autollenado */
+.cell.fill-target {
+  background-color: #eff6ff !important;
+  border-left: 2px dashed #3b82f6 !important;
+  border-right: 2px dashed #3b82f6 !important;
+  border-bottom: 2px dashed #3b82f6 !important;
+}
+
+/* Botón púrpura para acciones de autoincremento estilo Excel */
+.btn-purple {
+  background-color: #7c3aed;
+  color: #ffffff;
+  border: 1px solid #6d28d9;
+}
+
+.btn-purple:not(:disabled):hover {
+  background-color: #6d28d9;
+}
 .cell-select { width: 100%; height: 100%; border: none; background: transparent; outline: none; cursor: pointer; }
 .resizer { position: absolute; background: transparent; z-index: 25; }
 .resizer:hover, .resizer:active { background: #3b82f6; }

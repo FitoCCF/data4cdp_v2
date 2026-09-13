@@ -10,7 +10,7 @@ from rest_framework.views import APIView
 # Importaciones adicionales para el filtrado avanzado y el modelo User de Django
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters
-from django.db.models import F, Value, Case, When, BooleanField
+from django.db.models import F, Value, Case, When, BooleanField, Max
 from django.db.models.functions import Concat, Coalesce
 from django.contrib.postgres.aggregates import StringAgg
 from django_filters import rest_framework as django_filters
@@ -455,6 +455,86 @@ class AssayViewSet(viewsets.ModelViewSet):
                 {"status": "error", "error": f"Error al sincronizar con el analizador: {str(exc)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    # Endpoint GET /api/assays/next-chemical-id/ para calcular el siguiente correlativo secuencial por planta
+    @action(detail=False, methods=['get'], url_path='next-chemical-id')
+    def next_chemical_id(self, request):
+        """
+        Calcula y retorna el siguiente chemical_id correlativo disponible para la planta
+        asociada al equipo analizador especificado.
+        
+        Regla de negocio:
+        - Concentradora 1 (Courier Flotacion C1 [id=1] y Courier Molibdeno C1 [id=2]):
+          Comparten una misma secuencia correlativa continua (serie ~26,000).
+        - Concentradora 2 (Courier Flotacion C2 [id=5] y Courier Molibdeno C2 [id=6]):
+          Comparten una misma secuencia correlativa continua (serie ~10,000).
+        """
+        equipment_id = request.query_params.get('equipment_id')
+        plant_id = request.query_params.get('plant_id')
+
+        target_plant = None
+        target_equipment = None
+
+        # 1. Identificar la planta a partir del equipment_id o plant_id
+        if equipment_id:
+            try:
+                target_equipment = Equipment.objects.select_related('area__plant').get(id=int(equipment_id))
+                if target_equipment.area and target_equipment.area.plant:
+                    target_plant = target_equipment.area.plant
+            except (Equipment.DoesNotExist, ValueError):
+                return Response(
+                    {"status": "error", "error": f"Equipo con ID '{equipment_id}' no encontrado."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        elif plant_id:
+            try:
+                target_plant = Plant.objects.get(id=int(plant_id))
+            except (Plant.DoesNotExist, ValueError):
+                return Response(
+                    {"status": "error", "error": f"Planta con ID '{plant_id}' no encontrada."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+        else:
+            return Response(
+                {"status": "error", "error": "Debe especificar el parámetro 'equipment_id' o 'plant_id'."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not target_plant:
+            return Response(
+                {"status": "error", "error": "No se pudo determinar la planta para el equipo especificado."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # 2. Consultar el valor máximo de chemical_id registrado en toda la planta
+        # Se filtra chemical_id < 100000 para ignorar valores históricos de timestamps Unix (ej. 1741018740)
+        max_record = Assay.objects.filter(
+            sample__equipment__area__plant=target_plant,
+            chemical_id__isnull=False,
+            chemical_id__lt=100000
+        ).aggregate(max_id=Max('chemical_id'))
+
+        max_chemical_id = max_record.get('max_id')
+
+        # 3. Si no existe ningún chemical_id previo en la planta, determinar base según la planta
+        if max_chemical_id is None:
+            # Concentradora 1 usa base 26000, Concentradora 2 usa base 10000
+            if "1" in str(target_plant.name) or "1" in str(target_plant.tag):
+                next_id = 26001
+            else:
+                next_id = 10001
+        else:
+            next_id = max_chemical_id + 1
+
+        return Response({
+            "status": "ok",
+            "plant_id": target_plant.id,
+            "plant_name": target_plant.name,
+            "equipment_id": target_equipment.id if target_equipment else None,
+            "equipment_name": target_equipment.name if target_equipment else None,
+            "max_chemical_id": max_chemical_id,
+            "next_chemical_id": next_id
+        }, status=status.HTTP_200_OK)
 
 class CalendarViewSet(viewsets.ModelViewSet):
     queryset = Calendar.objects.all()

@@ -536,6 +536,80 @@ class AssayViewSet(viewsets.ModelViewSet):
             "next_chemical_id": next_id
         }, status=status.HTTP_200_OK)
 
+    # Endpoint POST /api/assays/autofill-chemical-ids/ para autollenar o reasignar correlativos en BD
+    @action(detail=False, methods=['post'], url_path='autofill-chemical-ids')
+    def autofill_chemical_ids(self, request):
+        """
+        Asigna o recalcula códigos chemical_id correlativos para un equipo y fecha dados directamente en la base de datos.
+        """
+        equipment_id = request.data.get('equipment_id')
+        date_str = request.data.get('date')
+        reassign = bool(request.data.get('reassign', False))
+
+        if not equipment_id:
+            return Response(
+                {"status": "error", "error": "El parámetro equipment_id es requerido."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        target_date = None
+        if date_str:
+            try:
+                from datetime import datetime
+                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return Response(
+                    {"status": "error", "error": f"Formato de fecha inválido: {date_str}. Use YYYY-MM-DD."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        from .services.clb_syncer import AssaySyncService, natural_sort_key
+        equipment = Equipment.objects.select_related('area__plant').filter(id=int(equipment_id)).first()
+        if not equipment:
+            return Response({"status": "error", "error": "Equipo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+        plant = equipment.area.plant if equipment.area else None
+
+        query = Assay.objects.filter(sample__equipment_id=equipment_id)
+        if target_date:
+            query = query.filter(date=target_date)
+
+        if not reassign:
+            query = query.filter(chemical_id__isnull=True)
+
+        assays_to_update = list(query.select_related('sample'))
+        if not assays_to_update:
+            return Response({
+                "status": "ok",
+                "message": "No hay ensayos pendientes de código chemical_id para esta selección.",
+                "updated": 0
+            })
+
+        assays_to_update.sort(
+            key=lambda a: (
+                natural_sort_key(a.sample.tag if a.sample else ""),
+                a.instance or 0,
+                a.time or time(0, 0, 0)
+            )
+        )
+
+        next_id = AssaySyncService.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
+        current_seq = next_id
+        for a in assays_to_update:
+            a.chemical_id = current_seq
+            current_seq += 1
+
+        from django.db import transaction
+        with transaction.atomic():
+            Assay.objects.bulk_update(assays_to_update, ['chemical_id'])
+
+        return Response({
+            "status": "ok",
+            "message": f"Se asignaron {len(assays_to_update)} códigos chemical_id iniciando en {next_id}.",
+            "updated": len(assays_to_update),
+            "start_id": next_id,
+            "next_chemical_id": current_seq
+        })
+
 class CalendarViewSet(viewsets.ModelViewSet):
     queryset = Calendar.objects.all()
     serializer_class = CalendarSerializer

@@ -85,7 +85,20 @@
           @pageSizeChange="handlePageSizeChange"
           @filterChange="handleFilterChange"
           @sortChange="handleSortChange"
-        />
+        >
+          <!-- Botón en la barra de herramientas para autollenar Chemical ID correlativo -->
+          <template #actions-end>
+            <button
+              type="button"
+              class="btn-autofill"
+              @click="autoFillChemicalIds(true)"
+              :disabled="loading || !selectedEquipmentId"
+              title="Autollenar correlativos en las filas sin Chemical ID a partir del último valor registrado en la planta"
+            >
+              🔢 Autollenar Chemical ID
+            </button>
+          </template>
+        </ExcelGrid>
     </div>
 
     <!-- Mensaje cuando no hay equipo seleccionado -->
@@ -363,7 +376,97 @@ const loadData = async (page = 1) => {
                 return value;
             });
         });
+
+        // Autollenado automático hacia adelante de chemical_id si existen filas nuevas sin código
+        await autoFillChemicalIds(false);
     }); // Sin mensaje personalizado; useApi.js reportará el estado real del servidor HTTP
+};
+
+/**
+ * Autocompleta de manera correlativa y hacia adelante los valores faltantes de 'chemical_id'
+ * (columna index 22) tomando como base el MAX(chemical_id) de la planta asociada al analizador seleccionado.
+ * 
+ * Regla de correlatividad por Planta:
+ * - Concentradora 1 (Courier Flotacion C1 y Courier Molibdeno 1): serie ~26,000.
+ * - Concentradora 2 (Courier Flotacion C2 y Courier Molibdeno C2): serie ~10,000.
+ * 
+ * Edición manual posterior:
+ * - Las celdas de 'Chemical ID' (columna 22) en ExcelGrid son editables en modo edición.
+ *   El usuario puede modificar cualquier código antes de presionar 'Guardar Cambios'.
+ * 
+ * @param {boolean} notifyUser - Si es true, notifica mediante alert al usuario o pide confirmación si ya están llenos.
+ */
+const autoFillChemicalIds = async (notifyUser = false) => {
+    if (!selectedEquipmentId.value || !assaysData.value || assaysData.value.length === 0) {
+        if (notifyUser) {
+            alert('No hay ensayos cargados o no hay un analizador seleccionado.');
+        }
+        return;
+    }
+
+    const chemicalIdColIndex = 22; // Índice de 'chemical_id' en colKeys
+
+    // Identificar las filas de la vista actual que no tienen Chemical ID asignado
+    const emptyRowIndices = [];
+    assaysData.value.forEach((row, idx) => {
+        const val = row[chemicalIdColIndex];
+        // Si notifyUser es false (llamada automática), sólo autollenamos filas nuevas sin ID en BD (row[0] === '')
+        // Si notifyUser es true (clic en botón), llenamos cualquier fila con chemical_id vacío
+        if (val === '' || val === null || val === undefined) {
+            if (notifyUser || row[0] === '' || row[0] === 'nuevo') {
+                emptyRowIndices.push(idx);
+            }
+        }
+    });
+
+    if (emptyRowIndices.length === 0 && !notifyUser) {
+        return;
+    }
+
+    try {
+        // Consultamos al backend el siguiente código correlativo disponible para la planta
+        const res = await api.get('assays/next-chemical-id/', {
+            params: { equipment_id: selectedEquipmentId.value }
+        });
+
+        if (!res.data || !res.data.next_chemical_id) {
+            console.warn('Respuesta inesperada de next-chemical-id:', res.data);
+            return;
+        }
+
+        const nextBaseId = res.data.next_chemical_id;
+
+        if (emptyRowIndices.length > 0) {
+            // Asignamos números correlativos secuenciales comenzando desde nextBaseId
+            let currentSeq = nextBaseId;
+            emptyRowIndices.forEach(idx => {
+                assaysData.value[idx][chemicalIdColIndex] = currentSeq++;
+            });
+
+            if (notifyUser) {
+                alert(`✅ Se autollenaron ${emptyRowIndices.length} Chemical ID(s) correlativo(s) iniciando en ${nextBaseId}.\nPuedes editar cualquier valor antes de presionar 'Guardar Cambios'.`);
+            }
+        } else if (notifyUser) {
+            // Si todas las filas ya tienen Chemical ID, ofrecemos reasignar correlativos
+            const confirmReassign = confirm(
+                `Todas las ${assaysData.value.length} filas actuales ya cuentan con un Chemical ID asignado.\n\n` +
+                `¿Deseas recalcular y reasignar correlativos secuenciales a partir del próximo código de la planta (${nextBaseId})?`
+            );
+
+            if (confirmReassign) {
+                let currentSeq = nextBaseId;
+                assaysData.value.forEach(row => {
+                    row[chemicalIdColIndex] = currentSeq++;
+                });
+                alert(`✅ Se reasignaron ${assaysData.value.length} Chemical ID(s) correlativo(s) iniciando en ${nextBaseId}.\nPresiona 'Guardar Cambios' para persistir los cambios en la base de datos.`);
+            }
+        }
+    } catch (err) {
+        console.error('Error al autollenar chemical_id:', err);
+        if (notifyUser) {
+            alert('Error al consultar el siguiente Chemical ID disponible en el servidor.');
+        }
+    }
 };
 
 // --- Manejadores de Eventos del Componente ExcelGrid ---
@@ -850,5 +953,35 @@ onMounted(() => {
   border-radius: 4px;
   white-space: pre-wrap;
   font-family: monospace;
+}
+
+/* Botón para autollenar Chemical ID correlativo */
+.btn-autofill {
+  padding: 6px 12px;
+  background-color: #7c3aed;
+  color: #fff;
+  border: 1px solid #6d28d9;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.btn-autofill:hover:not(:disabled) {
+  background-color: #6d28d9;
+}
+
+.btn-autofill:disabled {
+  background-color: #e0e0e0;
+  color: #9e9e9e;
+  border-color: #bdbdbd;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 </style>

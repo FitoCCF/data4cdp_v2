@@ -182,12 +182,13 @@
                 @mousedown="startSelection(visualIndex, cIndex)"
                 @mouseover="updateSelection(visualIndex, cIndex)"
                 @focus="setActive(visualIndex, cIndex)"
+                @input="handleInput"
                 @paste.prevent="handlePaste($event, visualIndex, cIndex)"
                 @keydown="handleKeydown($event, visualIndex, cIndex)"
                 @copy="handleCopy"
 
                 :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !item.row.isSummary"
-                @blur="!isColumnSelect(cIndex) && updateCell($event, item.originalIndex, cIndex)"
+                @blur="handleBlur($event, item.originalIndex, cIndex)"
               >
                 <!-- Renderizado Condicional: Select o Texto -->
                 <template v-if="isColumnSelect(cIndex) && !item.row.isSummary">
@@ -217,13 +218,15 @@
                 </template>
 
                 <!-- Cuadrito de arrastre estilo Excel (Fill Handle) para sumar +1 sucesivamente hacia abajo -->
-                <div
-                  v-if="isEditMode && activeCell.r === visualIndex && activeCell.c === cIndex && !item.row.isSummary && cIndex !== 0 && canFillDownCell(visualIndex, cIndex)"
+                <span
+                  v-if="isEditMode && !isTyping && activeCell.r === visualIndex && activeCell.c === cIndex && !item.row.isSummary && cIndex !== 0 && canFillDownCell(visualIndex, cIndex)"
                   class="excel-fill-handle"
+                  contenteditable="false"
+                  tabindex="-1"
                   @mousedown.stop="startFillDrag($event, visualIndex, cIndex)"
                   @dblclick.stop="fillDownSeriesFromActiveCell"
                   title="Arrastra hacia abajo o haz doble clic para autoincrementar +1 en las filas inferiores"
-                ></div>
+                ></span>
               </td>
             </template>
           </tr>
@@ -363,6 +366,7 @@ const rowHeights = ref([]);
 const isEditMode = ref(false);
 const showSaveModal = ref(false);
 const activeCell = ref({ r: null, c: null });
+const isTyping = ref(false);
 const selection = ref({ start: null, end: null });
 const isSelecting = ref(false);
 const tableRef = ref(null);
@@ -648,8 +652,20 @@ watch(() => props.data, (newData) => {
 
 // --- EDICIÓN Y EVENTOS ---
 
+// Extrae el texto limpio de una celda ignorando elementos auxiliares como el fill handle o indicadores
+const getCleanCellText = (element) => {
+  if (!element) return '';
+  const clone = element.cloneNode(true);
+  const handle = clone.querySelector('.excel-fill-handle');
+  if (handle) handle.remove();
+  const indicator = clone.querySelector('.overtime-indicator');
+  if (indicator) indicator.remove();
+  return clone.innerText.replace(/[\r\n]+/g, '').trim();
+};
+
 const toggleEditMode = () => {
   isEditMode.value = !isEditMode.value;
+  isTyping.value = false;
   selection.value = { start: null, end: null };
   activeCell.value = { r: null, c: null };
   selectedRowIndices.value.clear();
@@ -658,9 +674,22 @@ const toggleEditMode = () => {
 const promptSave = () => { showSaveModal.value = true; };
 const executeSave = () => { emit('save', localGrid.value); showSaveModal.value = false; };
 
+const handleInput = () => {
+  if (!isTyping.value) {
+    isTyping.value = true;
+  }
+};
+
+const handleBlur = (e, originalRowIndex, c) => {
+  isTyping.value = false;
+  if (!isColumnSelect(c)) {
+    updateCell(e, originalRowIndex, c);
+  }
+};
+
 const updateCell = (e, originalRowIndex, c) => {
   if (isEditMode.value) {
-    localGrid.value[originalRowIndex][c] = e.target.innerText;
+    localGrid.value[originalRowIndex][c] = getCleanCellText(e.target);
     if (props.rowCalculator && typeof props.rowCalculator === 'function') {
       props.rowCalculator(localGrid.value[originalRowIndex], c);
     }
@@ -746,7 +775,21 @@ const handleKeydown = (e, visualR, c) => {
 
   const maxR = filteredGrid.value.length - 1;
   const maxC = props.headers.length - 1;
-  if (e.key === 'ArrowDown') { e.preventDefault(); if (visualR < maxR) focusCell(visualR + 1, c); }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    isTyping.value = false;
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+    if (visualR < maxR) focusCell(visualR + 1, c);
+  }
+  else if (e.key === 'Escape') {
+    isTyping.value = false;
+    if (document.activeElement && typeof document.activeElement.blur === 'function') {
+      document.activeElement.blur();
+    }
+  }
+  else if (e.key === 'ArrowDown') { e.preventDefault(); if (visualR < maxR) focusCell(visualR + 1, c); }
   else if (e.key === 'ArrowUp') { e.preventDefault(); if (visualR > 0) focusCell(visualR - 1, c); }
   else if (e.key === 'ArrowRight') { if(!e.shiftKey && c < maxC) focusCell(visualR, c + 1); }
   else if (e.key === 'ArrowLeft') { if(!e.shiftKey && c > 0) focusCell(visualR, c - 1); }
@@ -795,12 +838,12 @@ const canFillDownCell = (visualR, colIndex) => {
   if (!item || item.row.isSummary) return false;
   if (isColumnSelect(colIndex)) return false;
 
-  // Si la columna está explícitamente configurada con autoIncrementDown en columnsConfig
-  if (props.columnsConfig[colIndex]?.autoIncrementDown !== undefined) {
-    return !!props.columnsConfig[colIndex].autoIncrementDown;
+  // Si la columna está explícitamente deshabilitada para autoincrementar
+  if (props.columnsConfig[colIndex]?.autoIncrementDown === false) {
+    return false;
   }
 
-  // O si el valor actual de la celda contiene una parte numérica parseable
+  // Para poder autoincrementar (+1 hacia abajo), la celda DEBE contener un valor con número parseable
   return parseSeriesValue(item.row[colIndex]) !== null;
 };
 
@@ -836,7 +879,7 @@ const fillDownSeries = (startVisualR, endVisualR = null, colIndex = null) => {
     const curC = activeCell.value.c;
     if (curR !== null && curC !== null && filteredGrid.value[curR]) {
       const origIdx = filteredGrid.value[curR].originalIndex;
-      localGrid.value[origIdx][curC] = document.activeElement.innerText;
+      localGrid.value[origIdx][curC] = getCleanCellText(document.activeElement);
     }
   }
 
@@ -952,7 +995,12 @@ const focusCell = (visualR, c) => {
       }
   }
 };
-const setActive = (r, c) => { activeCell.value = { r, c }; };
+const setActive = (r, c) => {
+  if (activeCell.value.r !== r || activeCell.value.c !== c) {
+    isTyping.value = false;
+  }
+  activeCell.value = { r, c };
+};
 
 // --- COPIAR / PEGAR ---
 const handleCopy = (e) => {
@@ -1113,6 +1161,10 @@ onMounted(() => { initGrid(); });
   cursor: crosshair;
   z-index: 30;
   box-sizing: border-box;
+  display: block;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: auto;
 }
 
 .excel-fill-handle:hover {

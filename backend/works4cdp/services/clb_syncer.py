@@ -17,18 +17,26 @@ from requests.adapters import HTTPAdapter
 # Import de la estrategia de reintentos con backoff exponencial de urllib3.
 from urllib3.util.retry import Retry
 
+# Import de expresiones regulares para ordenamiento alfanumérico natural.
+import re
+
 # Import de transacciones de Django para garantizar operaciones atómicas en BD.
 from django.db import transaction
+from django.db.models import Max
 # Import de utilidades de zona horaria de Django para generar timestamps conscientes de zona.
 from django.utils import timezone
 # Import de la configuración global de Django para verificar entornos (dev/prod).
 from django.conf import settings
 
 # Import de los modelos de base de datos de la aplicación works4cdp.
-from works4cdp.models import Sample, Assay, Equipment
+from works4cdp.models import Sample, Assay, Equipment, Plant
 
 # Instanciamos el logger para este módulo.
 logger = logging.getLogger(__name__)
+
+def natural_sort_key(s: Any) -> list:
+    """Clave para ordenamiento alfanumérico natural (ej. C_01_S02 antes de C_01_S10)."""
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s or ''))]
 
 # Mapa estático de IP por ID de equipo analizador Courier (Courier 1, 2, 5, 6).
 EQUIPMENT_IP_MAP: Dict[int, str] = {
@@ -249,6 +257,34 @@ class AssaySyncService:
     """
 
     @classmethod
+    def get_next_chemical_id_for_plant(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> int:
+        """
+        Calcula el siguiente chemical_id correlativo disponible para la planta.
+        Regla de negocio:
+        - Concentradora 1 (Courier 1 y 2): serie ~26,000 (base inicial 26001).
+        - Concentradora 2 (Courier 5 y 6): serie ~10,000 (base inicial 10001).
+        Se filtra chemical_id < 100000 para ignorar marcas de tiempo Unix históricas.
+        """
+        query = Assay.objects.filter(chemical_id__isnull=False, chemical_id__lt=100000)
+        if plant:
+            query = query.filter(sample__equipment__area__plant=plant)
+        elif equipment_id:
+            if int(equipment_id) in (1, 2):
+                query = query.filter(sample__equipment_id__in=[1, 2])
+            else:
+                query = query.filter(sample__equipment_id__in=[5, 6])
+
+        max_id = query.aggregate(max_val=Max('chemical_id')).get('max_val')
+        if max_id is None:
+            is_c1 = False
+            if plant:
+                is_c1 = "1" in str(plant.name) or "1" in str(getattr(plant, 'tag', ''))
+            elif equipment_id:
+                is_c1 = int(equipment_id) in (1, 2)
+            return 26001 if is_c1 else 10001
+        return max_id + 1
+
+    @classmethod
     def sync_equipment(cls, equipment_id: int, target_date: Optional[date] = None) -> Dict[str, Any]:
         """
         Sincroniza los datos del Courier para un equipo específico y fecha dada.
@@ -377,21 +413,74 @@ class AssaySyncService:
                     # Registramos la clave para evitar duplicados en el mismo archivo.
                     existing_keys.add(natural_key)
 
-            # Si hay registros legítimamente nuevos, los insertamos atómicamente en bloque.
+            # Obtenemos la planta asociada al equipo para correlatividad de chemical_id
+            equipment_obj = Equipment.objects.select_related('area__plant').filter(id=int(equipment_id)).first()
+            plant = equipment_obj.area.plant if (equipment_obj and equipment_obj.area) else None
+
+            current_chem_id = None
+
+            # Si hay registros legítimamente nuevos, asignamos chemical_id correlativo y los insertamos en bloque.
             if new_assays:
+                # Ordenamos los nuevos ensayos según el orden natural del tag de muestra (SN), instancia y hora
+                new_assays.sort(
+                    key=lambda a: (
+                        natural_sort_key(a.sample.tag if a.sample else ""),
+                        a.instance or 0,
+                        a.time or time(0, 0, 0)
+                    )
+                )
+                current_chem_id = cls.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
+                for a in new_assays:
+                    a.chemical_id = current_chem_id
+                    current_chem_id += 1
+
                 with transaction.atomic():
                     # bulk_create ejecuta un único INSERT eficiente para todos los registros.
                     Assay.objects.bulk_create(new_assays)
-                logger.info("Se insertaron exitosamente %d nuevos ensayos para equipo %s", len(new_assays), equipment_id)
+                logger.info("Se insertaron exitosamente %d nuevos ensayos para equipo %s con chemical_id asignado", len(new_assays), equipment_id)
 
-            # Generamos mensaje explícito según el resultado de la validación en la API
+            # Verificamos si existen ensayos en BD para este equipo y fecha sin chemical_id asignado
+            # (vital para corregir registros ya sincronizados previamente en producción con chemical_id nulo)
+            unassigned_assays = list(
+                Assay.objects.filter(
+                    sample__equipment_id=equipment_id,
+                    date=effective_date,
+                    chemical_id__isnull=True
+                ).select_related('sample')
+            )
+            if unassigned_assays:
+                unassigned_assays.sort(
+                    key=lambda a: (
+                        natural_sort_key(a.sample.tag if a.sample else ""),
+                        a.instance or 0,
+                        a.time or time(0, 0, 0)
+                    )
+                )
+                if current_chem_id is None:
+                    current_chem_id = cls.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
+                for a in unassigned_assays:
+                    a.chemical_id = current_chem_id
+                    current_chem_id += 1
+
+                with transaction.atomic():
+                    Assay.objects.bulk_update(unassigned_assays, ['chemical_id'])
+                logger.info("Se asignaron exitosamente %d códigos chemical_id a ensayos preexistentes del equipo %s en fecha %s", len(unassigned_assays), equipment_id, effective_date)
+
+            updated_chem_count = len(unassigned_assays) if unassigned_assays else 0
             formatted_date = effective_date.strftime("%Y-%m-%d")
-            if total_found_in_api == 0:
+
+            # Generamos mensaje explícito según el resultado de la validación en la API y asignación de códigos
+            if total_found_in_api == 0 and updated_chem_count == 0:
                 result_msg = f"No se encontraron lecturas en la API del Courier ({ip}) para la fecha {formatted_date}."
-            elif len(new_assays) == 0:
-                result_msg = f"Se verificaron {total_found_in_api} registro(s) en la API del Courier para la fecha {formatted_date}. Todos ya se encontraban registrados en la base de datos."
+            elif len(new_assays) > 0:
+                details = [f"se insertaron {len(new_assays)} nuevo(s) en la base de datos con chemical_id asignado"]
+                if updated_chem_count > 0:
+                    details.append(f"y se autollenaron {updated_chem_count} registro(s) preexistentes")
+                result_msg = f"Sincronización exitosa: Se encontraron {total_found_in_api} registro(s) en la API, {', '.join(details)}."
+            elif updated_chem_count > 0:
+                result_msg = f"Se asignaron códigos chemical_id correlativos a {updated_chem_count} registro(s) preexistentes para la fecha {formatted_date}."
             else:
-                result_msg = f"Sincronización exitosa: Se encontraron {total_found_in_api} registro(s) en la API y se insertaron {len(new_assays)} nuevo(s) en la base de datos."
+                result_msg = f"Se verificaron {total_found_in_api} registro(s) en la API del Courier para la fecha {formatted_date}. Todos ya se encontraban registrados en la base de datos con chemical_id."
 
             return {
                 "status": "ok",
@@ -400,6 +489,7 @@ class AssaySyncService:
                 "equipment_id": equipment_id,
                 "found_in_api": total_found_in_api,
                 "inserted": len(new_assays),
+                "updated_chemical_ids": updated_chem_count,
             }
 
         finally:

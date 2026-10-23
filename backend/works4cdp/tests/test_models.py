@@ -29,6 +29,17 @@ class AssaySaveTests(TestCase):
         assay.save()
         self.assertEqual(assay.timestamp.date(), datetime.date(2026, 6, 2))
 
+    def test_peso_prod_es_peso_total_menos_tara(self):
+        assay = f.make_assay(self.sample, tara=114.5, tweight=174.5, dweight=30.0)
+        self.assertEqual(assay.pweight, 60.0)
+        assay.tweight = 200.3
+        assay.save()
+        self.assertEqual(assay.pweight, 85.8)  # sin ruido binario (200.3 - 114.5 = 85.80000000000001)
+
+    def test_peso_prod_se_conserva_si_falta_un_peso(self):
+        assay = f.make_assay(self.sample, tara=10.0, pweight=7.0)
+        self.assertEqual(assay.pweight, 7.0)
+
     def test_psol_se_calcula_desde_los_pesos(self):
         # (dweight / (tweight - tara)) * 100 = 30 / (110 - 10) * 100
         assay = f.make_assay(self.sample, tara=10.0, tweight=110.0, dweight=30.0)

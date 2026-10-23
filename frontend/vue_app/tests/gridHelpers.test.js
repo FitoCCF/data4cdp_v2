@@ -14,8 +14,9 @@ describe('sanitizeValue', () => {
     expect(sanitizeValue('  C1 ')).toBe('C1')
   })
 
-  it('cambia la coma decimal por punto solo en campos numéricos', () => {
-    expect(sanitizeValue('0,84', true)).toBe('0.84')
+  it('en campos numéricos quita la coma de miles (punto = decimal); en texto no toca nada', () => {
+    expect(sanitizeValue('1,035.84', true)).toBe('1035.84')
+    expect(sanitizeValue('0,84', true)).toBe('0,84') // formato no aceptado: se envía tal cual y la API lo rechaza
     expect(sanitizeValue('Línea 1, norte', false)).toBe('Línea 1, norte')
   })
 
@@ -49,9 +50,9 @@ describe('mapGridKeyToPayload', () => {
 describe('buildPayloadFromRow', () => {
   it('arma el payload de un ensayo', () => {
     const colKeys = ['id', 'pCu', 'sample', 'user', 'meta_user']
-    const row = ['15', ' 0,84 ', '3', '2', '']
+    const row = ['15', ' 1,000.84 ', '3', '2', '']
     expect(buildPayloadFromRow(row, colKeys)).toEqual({
-      id: '15', pCu: '0.84', sample_id: '3', user: '2', meta_user: null,
+      id: '15', pCu: '1000.84', sample_id: '3', user: '2', meta_user: null,
     })
   })
 

@@ -36,7 +36,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       :columnsConfig="columnsConfig"
       @save="handleSave"
       @delete="handleDelete"
@@ -85,6 +85,7 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 import TaskFormModal from '../../components/TaskFormModal.vue';
 // Importamos la instancia configurada de Axios para realizar llamadas al backend
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos el composable para manejo de estado asíncrono y mensajes de error
 import { useApi } from '../../composables/useApi';
 // Importamos el composable con los catálogos y funciones de la jerarquía de activos
@@ -103,11 +104,14 @@ const colKeys = [
   'id', 'task_catalog', 'duration', 'workers', 'frequency', 
   'start_date', 'description', 'equipment__area__plant__name', 'equipment__area__name', 'equipment__system__name', 'equipment', 'procedure', 'turn'
 ];
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = colKeys;
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('tasks', colToField);
 
 // Matriz bidimensional reactiva con las celdas mapeadas para ExcelGrid
 const gridData = ref([]);
 // Arreglo con la totalidad de registros para alimentar los filtros de columna
-const filterData = ref([]);
 // Listado de tareas normalizadas del catálogo maestro
 const taskCatalogList = ref([]);
 // Almacena los objetos planos de tareas de la página actual para permitir edición al hacer doble clic
@@ -128,8 +132,7 @@ const {
   areasList,
   systemsList,
   loadDependencies,
-  getEquipmentHierarchyRow,
-  buildFilterParams
+  getEquipmentHierarchyRow
 } = useEquipmentHierarchies();
 
 // Variables de estado para la paginación de la tabla
@@ -144,6 +147,8 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 // Ordenamiento actual (columna y dirección asc/desc)
 const currentSort = ref({ colIndex: null, direction: null });
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
 
 // Función para descargar el catálogo maestro de nombres de tareas
 const loadTaskCatalogs = async () => {
@@ -192,44 +197,6 @@ const columnsConfig = computed(() => {
 // Función auxiliar para extraer datos considerando paginación DRF
 const extractData = (res) => res.data.results || res.data || [];
 
-// Carga la información requerida por los filtros de cabecera de la grilla
-const loadFilterData = async () => {
-  try {
-    // Consulta masiva para extraer opciones de filtro
-    const res = await api.get('tasks/', { params: { page_size: 10000 } });
-    // Extraemos resultados
-    const results = extractData(res);
-
-    // Mapeamos a una matriz 2D con los datos necesarios para filtrar
-    filterData.value = results.map(t => {
-      // Obtenemos el ID del equipo de forma segura
-      const eqId = (t.equipment && typeof t.equipment === 'object') ? t.equipment.id : (t.equipment || '');
-      // Obtenemos los nombres de jerarquía
-      const { plantName, areaName, systemName } = getEquipmentHierarchyRow(eqId);
-
-      // Retornamos el array de valores en el mismo orden que colKeys
-      return [
-        t.id, 
-        t.task_catalog || '', 
-        t.duration || '', 
-        t.workers || '', 
-        t.frequency || '', 
-        t.start_date || '', 
-        t.description || '', 
-        plantName,
-        areaName,
-        systemName,
-        eqId,
-        t.procedure || '', 
-        t.turn || ''
-      ];
-    });
-  } catch (e) {
-    // Manejo de excepciones en consola
-    console.error('Error al cargar datos para filtros:', e);
-  }
-};
-
 // Carga las tareas paginadas de la base de datos aplicando filtros y orden
 const loadData = async (page = 1) => {
   // Envolvemos la llamada en la función execute para gestionar loading y error automáticamente
@@ -237,19 +204,9 @@ const loadData = async (page = 1) => {
     // Parámetros base de paginación
     let params = { page, page_size: pageSize.value };
 
-    // Índices de columnas que componen la jerarquía operacional
-    const hierarchyIndexes = { plant: '7', area: '8', system: '9', equipment: '10' };
-    // Traducimos filtros activos a parámetros compatibles con Django
-    params = buildFilterParams(params, currentFilters.value, colKeys, hierarchyIndexes);
-
-    // Si el usuario aplicó ordenamiento sobre una columna directa
-    if (currentSort.value.colIndex !== null) {
-      const fieldName = colKeys[currentSort.value.colIndex];
-      // Ignoramos campos relacionales virtuales con '__'
-      if (fieldName && !fieldName.includes('__')) {
-        params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-      }
-    }
+    // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js). La API resuelve
+    // directamente las columnas de jerarquía (planta, área, sistema), también para ordenar.
+    Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
     // Petición GET al endpoint de tareas
     const resTasks = await api.get('tasks/', { params });
@@ -301,7 +258,7 @@ const handlePageChange = (p) => loadData(p);
 // Cambio de tamaño de página
 const handlePageSizeChange = (s) => { pageSize.value = s; loadData(1); };
 // Cambio de filtros de columna
-const handleFilterChange = (f) => { currentFilters.value = f; loadData(1); };
+const handleFilterChange = (f, specs = {}) => { currentFilters.value = f; currentSpecs.value = specs; loadData(1); };
 // Cambio de ordenamiento
 const handleSortChange = (s) => { currentSort.value = s; loadData(1); };
 
@@ -340,7 +297,6 @@ const handleModalSaved = async () => {
   closeModal();
   // Recargamos los datos para reflejar los cambios
   await loadData(currentPage.value);
-  await loadFilterData();
 };
 
 // Añade dinámicamente un nuevo catálogo creado al vuelo a la lista local
@@ -371,7 +327,6 @@ const handleSave = async (updatedGrid) => {
       
       // Recarga de datos
       await loadData(currentPage.value);
-      await loadFilterData();
     });
   } catch (e) {
     alert('Error al guardar. Verifique que los campos numéricos o fechas (YYYY-MM-DD) sean válidos.');
@@ -388,7 +343,6 @@ const handleDelete = async (idsToDelete) => {
       alert(`${idsToDelete.length} tarea(s) eliminada(s).`);
       
       await loadData(currentPage.value);
-      await loadFilterData();
     });
   } catch (e) {
     alert('No se pudo eliminar la tarea. Podría estar asignada a un registro histórico del calendario.');
@@ -404,7 +358,6 @@ onMounted(async () => {
   // 3. Cargamos los datos de la primera página
   await loadData();
   // 4. Cargamos datos para los filtros
-  await loadFilterData();
 });
 </script>
 

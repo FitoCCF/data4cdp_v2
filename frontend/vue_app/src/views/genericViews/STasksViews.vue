@@ -43,7 +43,7 @@
         :totalItems="totalItems"
         :pageSize="pageSize"
         :serverSideFiltering="true"
-        :filterData="filterData"
+        :filterValuesLoader="filterValuesLoader"
         @save="handleSave"
         @delete="handleDelete"
         @pageChange="handlePageChange"
@@ -195,6 +195,7 @@
 import { onMounted, ref, computed } from 'vue';
 // Importamos la instancia configurada de Axios para realizar llamadas REST a la API de Django
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos el componente reutilizable de grilla editable interactiva
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importamos el composable para la resolución de la jerarquía de equipos (Planta -> Área -> Sistema -> Equipo)
@@ -215,7 +216,8 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
-const filterData = ref([]); 
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
 
 // --- LISTAS AUXILIARES PARA SELECTORES DESPLEGABLES ---
 // Lista de plantillas de tareas preventivas (Task)
@@ -228,8 +230,8 @@ const usersPList = ref([]);
 const estadosList = ref([]);
 
 // --- INICIALIZACIÓN DE COMPOSABLES ---
-// Obtenemos funciones para resolver nombres de jerarquía y construir parámetros de filtrado server-side
-const { equipmentsList, loadDependencies, getEquipmentHierarchyRow, buildFilterParams } = useEquipmentHierarchies();
+// Obtenemos funciones para resolver los nombres de la jerarquía de cada equipo
+const { equipmentsList, loadDependencies, getEquipmentHierarchyRow } = useEquipmentHierarchies();
 
 // --- ESTADOS REACTIVOS PARA MODAL ESPECIALIZADO ---
 // Controla la visibilidad del modal de gestión
@@ -306,6 +308,16 @@ const colKeys = [
   'reschedule_date', 
   'is_permanent_reschedule'
 ];
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = colKeys.map(key => ({
+  // Las columnas de jerarquía de una tarea programada se consultan a través de su plantilla (task).
+  equipment__area__plant__name: 'task__equipment__area__plant__name',
+  equipment__area__name: 'task__equipment__area__name',
+  equipment__system__name: 'task__equipment__system__name',
+  equipment__name: 'task__equipment__name'
+}[key] || key));
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('taskp', colToField);
 
 // --- CONFIGURACIÓN DINÁMICA DE CELDAS Y DESPLEGABLES (columnsConfig) ---
 const gridConfig = computed(() => {
@@ -423,45 +435,6 @@ const loadSelectionLists = async () => {
   }
 };
 
-const loadFilterData = async () => {
-  try {
-    const res = await api.get('taskp/', { params: { page_size: 10000 } });
-    const results = extractData(res);
-
-    filterData.value = results.map(item => {
-      const eqId = getEquipmentIdFromTaskP(item);
-      const { plantName, areaName, systemName, equipmentName } = getEquipmentHierarchyRow(eqId);
-
-      return colKeys.map(key => {
-        if (key === 'equipment__area__plant__name') return plantName;
-        if (key === 'equipment__area__name') return areaName;
-        if (key === 'equipment__system__name') return systemName;
-        if (key === 'equipment__name') return equipmentName;
-
-        if (key === 'task_id') {
-          const val = item.task;
-          return val && typeof val === 'object' ? String(val.id) : (val !== null && val !== undefined ? String(val) : '');
-        }
-        if (key === 'group_id') {
-          const val = item.group;
-          return val && typeof val === 'object' ? String(val.id) : (val !== null && val !== undefined ? String(val) : '');
-        }
-        if (key === 'estado_id') {
-          const val = item.estado;
-          return val && typeof val === 'object' ? String(val.id) : (val !== null && val !== undefined ? String(val) : '');
-        }
-
-        let val = item[key];
-        if (typeof val === 'boolean') val = val ? 'true' : 'false';
-        if (typeof val === 'string' && val.includes('T')) val = val.split('T')[0];
-        return val === null || val === undefined ? '' : String(val);
-      });
-    });
-  } catch (err) {
-    console.error("Error al cargar datos para los filtros:", err);
-  }
-};
-
 const loadData = async (page = 1) => {
   loading.value = true;
   error.value = '';
@@ -472,15 +445,9 @@ const loadData = async (page = 1) => {
       page_size: pageSize.value
     };
 
-    const hierarchyIndexes = { plant: '2', area: '3', system: '4', equipment: '5' };
-    params = buildFilterParams(params, currentFilters.value, colKeys, hierarchyIndexes);
-
-    if (currentSort.value.colIndex !== null) {
-      const fieldName = colKeys[currentSort.value.colIndex];
-      if (fieldName && !fieldName.includes('__')) {
-        params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-      }
-    }
+    // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js). La API resuelve
+    // directamente las columnas de jerarquía (planta, área, sistema), también para ordenar.
+    Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
     const response = await api.get('taskp/', { params });
 
@@ -507,13 +474,12 @@ const refreshAllData = async () => {
   await loadDependencies();
   await loadSelectionLists();
   await loadData(currentPage.value);
-  await loadFilterData();
 };
 
 // --- MANEJADORES DE EVENTOS DE EXCELGRID ---
 const handlePageChange = (newPage) => loadData(newPage);
 const handlePageSizeChange = (newSize) => { pageSize.value = newSize; loadData(1); };
-const handleFilterChange = (filters) => { currentFilters.value = filters; loadData(1); };
+const handleFilterChange = (filters, specs = {}) => { currentFilters.value = filters; currentSpecs.value = specs; loadData(1); };
 const handleSortChange = (sortConfig) => { currentSort.value = sortConfig; loadData(1); };
 
 // Variable reactiva para almacenar el registro de TaskP seleccionado activamente en ExcelGrid
@@ -635,7 +601,6 @@ const saveTaskPFromModal = async () => {
     alert(`Orden de trabajo #${modalForm.value.id} actualizada con éxito.`);
     closeModal();
     await loadData(currentPage.value);
-    await loadFilterData();
   } catch (e) {
     alert('Error al guardar los cambios de la orden de trabajo en el servidor.');
   } finally {
@@ -689,7 +654,6 @@ const handleSave = async (gridRows) => {
     await Promise.all(promises);
     alert('Programación de tareas preventivas actualizada correctamente.');
     await loadData(currentPage.value);
-    await loadFilterData();
   } catch (err) {
     error.value = "Error al guardar cambios. Verifique que las fechas (YYYY-MM-DD) y números sean válidos.";
   } finally {
@@ -706,7 +670,6 @@ const handleDelete = async (idsToDelete) => {
     await Promise.all(idsToDelete.map(id => api.delete(`taskp/${id}/`)));
     alert('Registro(s) de programación eliminado(s) correctamente.');
     await loadData(currentPage.value);
-    await loadFilterData();
   } catch (err) {
     error.value = "Error al intentar eliminar los registros seleccionados.";
   } finally {
@@ -719,7 +682,6 @@ onMounted(async () => {
   await loadDependencies();
   await loadSelectionLists();
   await loadData();
-  await loadFilterData();
 });
 </script>
 

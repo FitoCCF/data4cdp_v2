@@ -30,7 +30,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       :columnsConfig="columnsConfig"
       @save="handleSaveFromGrid"
       @delete="confirmDeleteFromGrid"
@@ -264,6 +264,7 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importamos el cliente HTTP de Axios para peticiones REST a Django
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos el composable para manejo de estado de carga y errores de API
 import { useApi } from '../../composables/useApi';
 // Importamos el composable para la gestión de la jerarquía de equipos
@@ -303,12 +304,15 @@ const colKeys = [
   'created_by_user', 
   'turno'
 ];
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = colKeys;
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('correctivetasks', colToField);
 
 // --- ESTADOS REACTIVOS PRINCIPALES ---
 // Almacena las filas en matriz 2D para ser renderizadas por el componente ExcelGrid
 const gridData = ref([]);
 // Almacena el universo de datos para construir los desplegables de filtro por columna
-const filterData = ref([]);
 // Lista completa de usuarios obtenida del backend para los selectores
 const usersList = ref([]);
 // Lista completa del catálogo de tareas (TaskCatalog)
@@ -328,7 +332,7 @@ const newCategoryDescription = ref('');
 // Obtenemos helpers para peticiones asíncronas con feedback automático
 const { loading, error, execute } = useApi();
 // Obtenemos helpers para resolver la jerarquía de equipos (Planta -> Área -> Sistema -> Equipo)
-const { equipmentsList, loadDependencies, getEquipmentHierarchyRow, buildFilterParams } = useEquipmentHierarchies();
+const { equipmentsList, loadDependencies, getEquipmentHierarchyRow } = useEquipmentHierarchies();
 
 // --- ESTADOS DE PAGINACIÓN, FILTROS Y ORDENAMIENTO ---
 const currentPage = ref(1);
@@ -337,6 +341,8 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
 
 // --- ESTADOS REACTIVOS PARA MODAL ---
 // Controla la visibilidad del modal de creación/edición
@@ -485,54 +491,14 @@ const loadHierarchySelectors = async () => {
   }
 };
 
-// Carga los datos globales para alimentar los filtros de cabecera en ExcelGrid
-const loadFilterData = async () => {
-  try {
-    const res = await api.get('correctivetasks/', { params: { page_size: 10000 } });
-    const results = extractData(res);
-
-    filterData.value = results.map(t => {
-      const eqId = (t.equipment && typeof t.equipment === 'object') ? t.equipment.id : (t.equipment || '');
-      const { plantName, areaName, systemName } = getEquipmentHierarchyRow(eqId);
-      const userId = (t.created_by_user && typeof t.created_by_user === 'object') ? t.created_by_user.id : (t.created_by_user || '');
-
-      return [
-        t.id,
-        t.task_catalog || '',
-        t.name || '',
-        plantName,
-        areaName,
-        systemName,
-        eqId,
-        t.description || '',
-        t.root_cause || '',
-        t.creation_date || '',
-        t.priority || '',
-        userId,
-        t.turno || ''
-      ];
-    });
-  } catch (e) {
-    console.error('Error al cargar datos para los filtros:', e);
-  }
-};
-
 // Carga la lista paginada de tareas correctivas aplicando los filtros y el ordenamiento actual
 const loadData = async (page = 1) => {
   await execute(async () => {
     let params = { page, page_size: pageSize.value };
 
-    // Definición de índices de jerarquía para la construcción de filtros backend
-    const hierarchyIndexes = { plant: '3', area: '4', system: '5', equipment: '6' };
-    params = buildFilterParams(params, currentFilters.value, colKeys, hierarchyIndexes);
-
-    // Configurar ordenamiento según la columna seleccionada
-    if (currentSort.value.colIndex !== null) {
-      const fieldName = colKeys[currentSort.value.colIndex];
-      if (fieldName && !fieldName.includes('__')) {
-        params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-      }
-    }
+    // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js). La API resuelve
+    // directamente las columnas de jerarquía (planta, área, sistema), también para ordenar.
+    Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
     // Petición al endpoint de tareas correctivas
     const res = await api.get('correctivetasks/', { params });
@@ -587,7 +553,6 @@ const refreshAllData = async () => {
   await loadUsers();
   await loadHierarchySelectors();
   await loadData(currentPage.value);
-  await loadFilterData();
 };
 
 // Cierra cualquier mensaje de error visible
@@ -598,7 +563,7 @@ const clearError = () => {
 // --- MANEJADORES DE EVENTOS DE GRILLA (EXCELGRID) ---
 const handlePageChange = (p) => loadData(p);
 const handlePageSizeChange = (s) => { pageSize.value = s; loadData(1); };
-const handleFilterChange = (f) => { currentFilters.value = f; loadData(1); };
+const handleFilterChange = (f, specs = {}) => { currentFilters.value = f; currentSpecs.value = specs; loadData(1); };
 const handleSortChange = (s) => { currentSort.value = s; loadData(1); };
 
 // MANEJADOR DE DOBLE CLIC EN FILA DE GRILLA PARA EDICIÓN DIRECTA EN MODAL
@@ -679,7 +644,6 @@ const handleSaveFromGrid = async (updatedGrid) => {
       await Promise.all(promises);
       alert('Tareas correctivas guardadas con éxito.');
       await loadData(currentPage.value);
-      await loadFilterData();
     });
   } catch (e) {
     alert('Ocurrió un error al guardar las tareas correctivas. Verifique la validez de los datos.');
@@ -709,7 +673,6 @@ const executeDelete = async () => {
       alert(`${itemsToDelete.value.length} tarea(s) correctiva(s) eliminada(s) correctamente.`);
       closeDeleteModal();
       await loadData(currentPage.value);
-      await loadFilterData();
     });
   } catch (e) {
     alert('No se pudo eliminar la tarea correctiva. Es posible que tenga registros históricos o referencias asociadas.');
@@ -882,7 +845,6 @@ const saveTaskFromModal = async () => {
 
       closeModal();
       await loadData(currentPage.value);
-      await loadFilterData();
     });
   } catch (e) {
     alert('Error al procesar la solicitud en el servidor. Verifique los datos o si el nombre del catálogo ya existe.');
@@ -899,7 +861,6 @@ onMounted(async () => {
   await loadUsers();
   await loadHierarchySelectors();
   await loadData();
-  await loadFilterData();
 });
 </script>
 

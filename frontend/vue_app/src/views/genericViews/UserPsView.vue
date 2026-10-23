@@ -11,7 +11,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       @save="handleSave"
       @delete="handleDelete"
       @pageChange="handlePageChange"
@@ -34,6 +34,7 @@ import { ref, onMounted } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importamos la instancia de Axios para las peticiones a la API
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos el composable global que maneja automáticamente loading y error
 import { useApi } from '../../composables/useApi';
 // Importamos la función de utilidades compartida para construir el payload sanitizado
@@ -46,8 +47,6 @@ const colKeys = ['id', 'name'];
 
 // Creamos la variable reactiva que almacenará la matriz de datos para la grilla
 const gridData = ref([]);
-// Creamos la variable para los datos del menú de filtros del ExcelGrid
-const filterData = ref([]);
 
 // Extraemos las propiedades reactivas y la función ejecutora de nuestro composable
 const { loading, error, execute } = useApi();
@@ -65,22 +64,12 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 // Objeto que almacena la configuración de ordenamiento (columna y dirección)
 const currentSort = ref({ colIndex: null, direction: null });
-
-// Función que carga todos los datos para poblar los checkboxes de filtros
-const loadFilterData = async () => {
-    try {
-        // Hacemos un GET pidiendo hasta 10000 registros para los filtros
-        const res = await api.get('userp/', { params: { page_size: 10000 } });
-        // Extraemos los resultados de la estructura paginada
-        const results = res.data.results || res.data;
-        
-        // Mapeamos a matriz para la UI
-        filterData.value = results.map(item => colKeys.map(k => item[k] || ''));
-    } catch(e) {
-        // Si falla la precarga de filtros, lo registramos en consola
-        console.error("Error al cargar los filtros de grupos:", e);
-    }
-};
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = colKeys;
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('userp', colToField);
 
 // Función principal que trae los grupos aplicando la paginación y filtros
 const loadData = async (page = 1) => {
@@ -89,28 +78,8 @@ const loadData = async (page = 1) => {
         // Parámetros de petición
         const params = { page, page_size: pageSize.value };
         
-        // Añadimos filtros activos a los parámetros GET
-        for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-            const fieldName = colKeys[colIndex];
-            if (fieldName && values.length > 0) {
-                const vals = Array.from(values);
-                const validVals = vals.filter(v => v !== '');
-                if (validVals.length > 0) {
-                    params[`${fieldName}__in`] = validVals.join(',');
-                }
-                if (vals.includes('')) {
-                    params[`${fieldName}__isnull`] = 'True';
-                }
-            }
-        }
-        
-        // Añadimos ordenamiento si fue solicitado por el usuario
-        if (currentSort.value.colIndex !== null) {
-            const fieldName = colKeys[currentSort.value.colIndex];
-            if (fieldName) {
-                params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-            }
-        }
+        // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js)
+        Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
         // Ejecutamos la petición GET al endpoint de UserP
         const res = await api.get('userp/', { params });
@@ -138,7 +107,7 @@ const loadData = async (page = 1) => {
 // Enlaces funcionales desde el componente hijo hacia las lógicas locales
 const handlePageChange = (p) => loadData(p);
 const handlePageSizeChange = (s) => { pageSize.value = s; loadData(1); };
-const handleFilterChange = (f) => { currentFilters.value = f; loadData(1); };
+const handleFilterChange = (f, specs = {}) => { currentFilters.value = f; currentSpecs.value = specs; loadData(1); };
 const handleSortChange = (s) => { currentSort.value = s; loadData(1); };
 
 // Función que guarda las ediciones o creaciones enviadas desde ExcelGrid
@@ -167,7 +136,6 @@ const handleSave = async (updatedGrid) => {
             alert('Grupos guardados correctamente.');
             // Refrescamos la UI para obtener los IDs nuevos generados por la BD
             await loadData(currentPage.value);
-            await loadFilterData();
         });
     } catch (e) {
         alert('Error al guardar grupos. Revisa los datos.');
@@ -186,7 +154,6 @@ const handleDelete = async (idsToDelete) => {
             alert(`${idsToDelete.length} grupo(s) eliminado(s).`);
             // Forzamos actualización de vista
             await loadData(currentPage.value);
-            await loadFilterData();
         });
     } catch (e) {
         alert('Error al eliminar grupos. Es posible que tengan dependencias.');
@@ -196,7 +163,6 @@ const handleDelete = async (idsToDelete) => {
 // Se dispara inmediatamente después de que el componente carga en pantalla
 onMounted(() => {
     loadData();
-    loadFilterData();
 });
 </script>
 

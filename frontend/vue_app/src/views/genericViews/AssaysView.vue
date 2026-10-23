@@ -77,8 +77,10 @@
           :totalPages="totalPages"
           :totalItems="totalItems"
           :pageSize="pageSize"
+          ref="gridRef"
           :serverSideFiltering="true"
-          :filterData="filterData"
+          :filterValuesLoader="filterValuesLoader"
+          :defaultSort="defaultSort"
           @save="handleSave"
           @delete="handleDelete"
           @pageChange="handlePageChange"
@@ -121,10 +123,12 @@
 import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 import { api } from '../../api';
+import { buildGridFiltersParam, buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importación explícita del composable useApi
 import { useApi } from '../../composables/useApi';
 // Importamos la función de utilidades compartida para construir el payload sanitizado
 import { buildPayloadFromRow } from '../../utils/gridHelpers';
+import { assayWeightFormulas } from '../../utils/gridFormulas';
 
 // ============================================================================
 // 1. CONFIGURACIÓN DE COLUMNAS
@@ -165,7 +169,23 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
-const filterData = ref([]);
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
+// Referencia a la grilla para reiniciar sus filtros al cambiar de equipo.
+const gridRef = ref(null);
+// Las columnas de la grilla coinciden con los campos de la API (colKeys).
+const colToField = colKeys;
+// Orden por defecto de las filas cargadas: por Fecha y, dentro de cada fecha, por Muestra (orden natural
+// del tag: C_01_S2 antes que C_01_S10); a igual muestra, por Hora.
+const defaultSort = [
+    { colIndex: colKeys.indexOf('date'), direction: 'asc' },
+    { colIndex: colKeys.indexOf('sample'), direction: 'asc' },
+    { colIndex: colKeys.indexOf('time'), direction: 'asc' }
+];
+// Valores del menú de filtros desde el servidor, siempre dentro del equipo seleccionado.
+const filterValuesLoader = createGridValuesLoader('assays', colToField, () => ({
+    sample__equipment: selectedEquipmentId.value
+}));
 
 // Estado para extracción de archivo .clb de calibración
 const today = new Date();
@@ -184,6 +204,9 @@ const columnsConfig = computed(() => {
     // La clave '23' corresponde al índice de 'sample' (Muestra) en colKeys
     // La clave '31' corresponde al índice de 'user' (Usuario) en colKeys
     return {
+        // Columnas calculadas: Peso Prod. = Peso Total − Tara (solo lectura) y
+        // % Sol = Peso Seco / (Peso Total − Tara) × 100 (se recalcula; admite corrección manual).
+        ...assayWeightFormulas((key) => colKeys.indexOf(key)),
         22: {
             autoIncrementDown: true
         },
@@ -243,7 +266,6 @@ const loadInitialData = async () => {
         if (equipmentsList.value && equipmentsList.value.length > 0) {
             selectedEquipmentId.value = equipmentsList.value[0].id;
             await loadData(1);
-            await loadFilterData();
         } else if (analyzerSystemId) {
             error.value = 'El sistema Analizadores existe, pero no tiene equipos asociados.';
         }
@@ -258,39 +280,14 @@ const handleEquipmentChange = async () => {
     // Resetear paginación y filtros al cambiar de equipo
     currentPage.value = 1;
     currentFilters.value = {};
+    currentSpecs.value = {};
     currentSort.value = { colIndex: null, direction: null };
+    // Antes la grilla seguía mostrando los filtros del equipo anterior aunque ya no se aplicaban.
+    gridRef.value?.clearFilters();
 
     await loadData(1);
-    await loadFilterData();
 };
 
-/**
- * Carga los datos crudos para el menú de filtros desplegable de ExcelGrid.
- */
-const loadFilterData = async () => {
-    if (!selectedEquipmentId.value) return;
-    try {
-        const response = await api.get('assays/', {
-            params: {
-                sample__equipment: selectedEquipmentId.value,
-                page_size: 10000
-            }
-        });
-        const results = response.data.results || response.data;
-
-        filterData.value = results.map(assay => {
-            return colKeys.map(key => {
-                let value = assay[key];
-                if (value !== null && typeof value === 'object') {
-                    return value.id;
-                }
-                return value === null || value === undefined ? '' : value;
-            });
-        });
-    } catch (err) {
-        console.error('Error cargando datos para filtros:', err);
-    }
-};
 
 /**
  * Función principal que carga los ensayos aplicando los filtros del backend
@@ -306,34 +303,8 @@ const loadData = async (page = 1) => {
             page_size: pageSize.value
         };
 
-        // Aplicar filtros provenientes de ExcelGrid
-        for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-            let fieldName = colKeys[colIndex];
-
-            // Ajuste de nombres de campos si es necesario
-            if (fieldName === 'userp') fieldName = 'user';
-
-            if (fieldName && values.length > 0) {
-                const vals = Array.from(values);
-                const validVals = vals.filter(v => v !== '');
-                if (validVals.length > 0) {
-                    params[`${fieldName}__in`] = validVals.join(',');
-                }
-                if (vals.includes('')) {
-                    params[`${fieldName}__isnull`] = 'True';
-                }
-            }
-        }
-
-        // Aplicar ordenamiento proveniente de ExcelGrid
-        if (currentSort.value.colIndex !== null) {
-            let fieldName = colKeys[currentSort.value.colIndex];
-            if (fieldName === 'userp') fieldName = 'user';
-
-            if (fieldName) {
-                params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-            }
-        }
+        // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js)
+        Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
         // Ejecutar peticiones en paralelo: Ensayos (paginados) y Muestras del equipo (para el dropdown interno)
         const [assaysRes, samplesRes] = await Promise.all([
@@ -472,7 +443,7 @@ const autoFillChemicalIds = async (notifyUser = false) => {
 // --- Manejadores de Eventos del Componente ExcelGrid ---
 const handlePageChange = (newPage) => { loadData(newPage); };
 const handlePageSizeChange = (newSize) => { pageSize.value = newSize; loadData(1); };
-const handleFilterChange = (filters) => { currentFilters.value = filters; loadData(1); };
+const handleFilterChange = (filters, specs = {}) => { currentFilters.value = filters; currentSpecs.value = specs; loadData(1); };
 const handleSortChange = (sortConfig) => { currentSort.value = sortConfig; loadData(1); };
 
 // ============================================================================
@@ -533,7 +504,6 @@ const handleSave = async (updatedGrid) => {
             await Promise.all(promises);
             alert('Cambios guardados correctamente.');
             await loadData(currentPage.value);
-            await loadFilterData();
         });
     } catch (err) {
         let backendMsg = '';
@@ -572,7 +542,6 @@ const handleDelete = async (idsToDelete) => {
             }
 
             await loadData(pageToLoad);
-            await loadFilterData();
         });
     } catch (err) {
         alert('Ocurrió un error al eliminar los registros.');
@@ -619,25 +588,12 @@ const exportClbFile = async () => {
       params.sample = selectedSampleId.value;
     }
 
-    // Conservar filtros activos adicionales aplicados en la grilla ExcelGrid
-    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-      let fieldName = colKeys[colIndex];
-      if (fieldName === 'userp') fieldName = 'user';
-
-      // Si ya filtramos por muestra arriba, evitar conflicto
-      if (fieldName === 'sample' && selectedSampleId.value) continue;
-
-      if (fieldName && values.length > 0) {
-        const vals = Array.from(values);
-        const validVals = vals.filter(v => v !== '');
-        if (validVals.length > 0) {
-          params[`${fieldName}__in`] = validVals.join(',');
-        }
-        if (vals.includes('')) {
-          params[`${fieldName}__isnull`] = 'True';
-        }
-      }
-    }
+    // Conservar filtros activos de la grilla. Si ya se eligió una muestra arriba, se omite el filtro de esa columna.
+    const sampleCol = colKeys.indexOf('sample');
+    const gridFilters = buildGridFiltersParam(currentSpecs.value, colToField, {
+      skipCol: selectedSampleId.value ? sampleCol : undefined
+    });
+    if (gridFilters) params.grid_filters = gridFilters;
 
     const response = await api.get('assays/', { params });
     const assays = response.data.results || response.data || [];

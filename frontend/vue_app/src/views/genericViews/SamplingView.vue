@@ -163,7 +163,6 @@
           :headerGroups="headerGroups"
           :data="gridData"
           :columnsConfig="columnsConfig"
-          :rowCalculator="calculateSamplingRow"
           @save="handleSave"
           @delete="handleDelete"
         >
@@ -208,6 +207,7 @@ import { useApi } from '../../composables/useApi';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importamos la función de utilidades compartida para construir el payload sanitizado
 import { buildPayloadFromRow } from '../../utils/gridHelpers';
+import { assayWeightFormulas } from '../../utils/gridFormulas';
 
 // --- Estado Reactivo ---
 // Fecha seleccionada por defecto es la fecha actual (ISO string)
@@ -312,6 +312,9 @@ const columnsConfig = computed(() => {
     1: {
       autoIncrementDown: true
     },
+    // % SÓLIDOS se calcula con la fórmula compartida de ensayos (utils/gridFormulas.js) y admite
+    // corrección manual; reemplaza al antiguo rowCalculator propio de esta vista.
+    ...assayWeightFormulas((key) => colKeys.indexOf(key)),
     // La columna index 2 ("MUESTRA") se comporta como un dropdown con las muestras de este equipo
     2: {
       type: 'select',
@@ -795,40 +798,6 @@ watch([selectedDate, selectedEquipment], async () => {
 });
 
 // --- Helpers Auxiliares ---
-
-// Calcula automáticamente % SÓLIDOS (col 9) a partir de TARA (col 6), PESO TOTAL (col 7) y PESO SECO (col 8)
-// Fórmula: (PESO SECO) / (PESO TOTAL - TARA) * 100
-// Si el usuario edita directamente % SÓLIDOS (col 9), se preserva la edición manual del operador.
-const calculateSamplingRow = (row, changedColIndex) => {
-  const weightCols = [6, 7, 8];
-
-  // Si el cambio fue en una columna posterior a los pesos (ej. edición manual directa de % SÓLIDOS en col 9), respetarlo
-  if (changedColIndex !== undefined && !weightCols.includes(changedColIndex) && changedColIndex > 8) {
-    return;
-  }
-
-  const taraVal = row[6];
-  const tweightVal = row[7];
-  const dweightVal = row[8];
-
-  if (
-    taraVal !== '' && tweightVal !== '' && dweightVal !== '' &&
-    taraVal !== null && tweightVal !== null && dweightVal !== null &&
-    taraVal !== undefined && tweightVal !== undefined && dweightVal !== undefined
-  ) {
-    const tara = parseFloat(String(taraVal).replace(',', '.'));
-    const tweight = parseFloat(String(tweightVal).replace(',', '.'));
-    const dweight = parseFloat(String(dweightVal).replace(',', '.'));
-
-    if (!isNaN(tara) && !isNaN(tweight) && !isNaN(dweight)) {
-      const netWeight = tweight - tara;
-      if (netWeight > 0) {
-        const pSol = (dweight / netWeight) * 100;
-        row[9] = parseFloat(pSol.toFixed(2));
-      }
-    }
-  }
-};
 
 // Corta los segundos de la hora si es necesario
 const formatTime = (timeStr) => {

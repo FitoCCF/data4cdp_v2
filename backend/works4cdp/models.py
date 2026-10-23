@@ -265,6 +265,11 @@ class Assay(models.Model):
             else:
                 self.timestamp = timezone.make_aware(dt)
 
+        # Peso Prod. = Peso Total - Tara, siempre que ambos existan (misma fórmula que la grilla,
+        # frontend/vue_app/src/utils/gridFormulas.js). Se redondea para evitar ruido de decimales binarios.
+        if self.tweight is not None and self.tara is not None:
+            self.pweight = round(self.tweight - self.tara, 4)
+
         # Cálculo automático de pSol como respaldo solo si pSol es None y se cuentan con los pesos válidos
         # (se preservan al 100% los valores manuales existentes en BD o ingresados por el usuario)
         if self.pSol is None and self.tweight is not None and self.tara is not None and self.dweight is not None:

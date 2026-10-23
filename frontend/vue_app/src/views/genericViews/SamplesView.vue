@@ -19,7 +19,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       @save="handleSave"
       @delete="handleDelete"
       @pageChange="handlePageChange"
@@ -43,6 +43,7 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importación del cliente API
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importación del composable genérico de peticiones HTTP
 import { useApi } from '../../composables/useApi';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
@@ -71,22 +72,12 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
-const filterData = ref([]);
-
-const loadFilterData = async () => {
-    try {
-        const response = await api.get('samples/', { params: { page_size: 10000 } });
-        const results = response.data.results || response.data;
-        filterData.value = results.map(s => [
-            s.id,
-            s.tag || '',
-            s.name || '',
-            (s.equipment && typeof s.equipment === 'object') ? s.equipment.id : (s.equipment || '')
-        ]);
-    } catch (err) {
-        console.error('Error cargando datos para filtros:', err);
-    }
-};
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = ['id', 'tag', 'name', 'equipment'];
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('samples', colToField);
 
 // --- Propiedades Computadas ---
 
@@ -128,26 +119,8 @@ const loadData = async (page = 1) => {
         page_size: pageSize.value 
     };
 
-    const colToFieldMap = {
-        0: 'id',
-        1: 'tag',
-        2: 'name',
-        3: 'equipment'
-    };
-
-    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-        const fieldName = colToFieldMap[colIndex];
-        if (fieldName && values.length > 0) {
-            params[`${fieldName}__in`] = values.join(','); 
-        }
-    }
-
-    if (currentSort.value.colIndex !== null) {
-        const fieldName = colToFieldMap[currentSort.value.colIndex];
-        if (fieldName) {
-            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-        }
-    }
+    // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js)
+    Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
     // Realiza peticiones en paralelo: Muestras (Paginadas) y Equipos (Todos los registros para el dropdown)
     const [samplesRes, equipmentsRes] = await Promise.all([
@@ -199,8 +172,9 @@ const handlePageSizeChange = (newSize) => {
     loadData(1);
 };
 
-const handleFilterChange = (filters) => {
+const handleFilterChange = (filters, specs = {}) => {
     currentFilters.value = filters;
+    currentSpecs.value = specs;
     loadData(1);
 };
 
@@ -242,7 +216,6 @@ const handleSave = async (updatedGrid) => {
       alert('Cambios guardados correctamente.');
 
       await loadData();
-      await loadFilterData();
     });
   } catch (err) {
     // Manejo de errores durante el guardado
@@ -263,7 +236,6 @@ const handleDelete = async (idsToDelete) => {
             await Promise.all(deletePromises);
 
             alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
-            await loadFilterData();
         });
     } catch (err) {
         alert('Error al eliminar las filas.');
@@ -277,7 +249,6 @@ const handleDelete = async (idsToDelete) => {
 onMounted(() => {
   // Llama a la función para cargar los datos iniciales
   loadData();
-  loadFilterData();
 });
 </script>
 

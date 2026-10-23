@@ -1,4 +1,6 @@
-// List of database fields that represent numeric values where we need to replace decimal commas with dots
+import { normalizeNumberText } from './gridFormulas';
+
+// Campos numéricos: al enviarlos a la API se quita la coma de miles (ver normalizeNumberText)
 export const numericKeys = [
   'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
   'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pOx', 'pSol',
@@ -16,8 +18,12 @@ export const numericKeys = [
 export const sanitizeValue = (val, isNumeric = false) => {
   if (typeof val === 'string') {
     val = val.trim();
-    if (isNumeric && val.includes(',')) {
-      val = val.replace(',', '.');
+    // Números copiados de Excel: coma de miles y punto decimal ('1,035.5' -> '1035.5'). Antes solo se
+    // cambiaba la primera coma por punto y '1,035.5' quedaba como '1.035.5' (inválido para la API).
+    // Un formato no aceptado se deja tal cual para que la API lo rechace en vez de guardar otro número.
+    if (isNumeric && val !== '') {
+      const normalized = normalizeNumberText(val);
+      if (normalized !== null) val = normalized;
     }
   }
   return (val === '' || val === null || val === undefined) ? null : val;

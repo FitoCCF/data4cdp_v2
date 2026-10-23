@@ -16,11 +16,6 @@ const catalogs = {
   ],
 }
 
-// Índices de columna de la jerarquía en la grilla (como strings, igual que las claves de filtros)
-const hierarchyCols = { plant: '7', area: '8', system: '9', equipment: '10' }
-const colKeys = ['id', 'task_catalog', 'duration', 'workers', 'frequency', 'start_date', 'description',
-  'equipment__area__plant__name', 'equipment__area__name', 'equipment__system__name', 'equipment']
-
 let h
 
 beforeEach(async () => {
@@ -56,35 +51,5 @@ describe('getEquipmentHierarchyRow', () => {
 
   it('con un equipo desconocido devuelve textos vacíos', () => {
     expect(h.getEquipmentHierarchyRow(999).plantName).toBe('')
-  })
-})
-
-describe('buildFilterParams', () => {
-  const base = { page: 1, page_size: 25 }
-
-  it('sin filtros devuelve los parámetros base', () => {
-    expect(h.buildFilterParams(base, {}, colKeys, hierarchyCols)).toEqual(base)
-  })
-
-  it('filtro estándar -> campo__in y (Vacías) -> campo__isnull', () => {
-    const params = h.buildFilterParams(base, { 4: new Set(['Mensual', '']) }, colKeys, hierarchyCols)
-    expect(params).toMatchObject({ frequency__in: 'Mensual', frequency__isnull: 'True' })
-  })
-
-  it('filtro por planta se traduce a equipment__in con los equipos de esa planta', () => {
-    const params = h.buildFilterParams(base, { 7: new Set(['Concentradora 2']) }, colKeys, hierarchyCols)
-    expect(params.equipment__in).toBe('6')
-    expect(params).not.toHaveProperty('equipment__area__plant__name__in')
-  })
-
-  it('filtros de jerarquía combinados se intersectan', () => {
-    const filters = { 7: new Set(['Concentradora 1']), 9: new Set(['Bombas']) }
-    // Concentradora 1 solo tiene el Courier y Bombas solo está en Concentradora 2 -> sin resultados
-    expect(h.buildFilterParams(base, filters, colKeys, hierarchyCols).equipment__in).toBe('-1')
-  })
-
-  it('filtro directo por equipo', () => {
-    const params = h.buildFilterParams(base, { 10: new Set([5]) }, colKeys, hierarchyCols)
-    expect(params.equipment__in).toBe('5')
   })
 })

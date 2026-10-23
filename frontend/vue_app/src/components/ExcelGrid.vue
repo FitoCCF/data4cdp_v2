@@ -114,6 +114,13 @@
               <div class="header-content">
                 <!-- Texto del encabezado -->
                 <span class="header-text">{{ col }}</span>
+                <!-- Indicador de la columna ordenada -->
+                <span v-if="sortState.colIndex === index" class="sort-indicator" :title="sortState.direction === 'asc' ? 'Orden ascendente' : 'Orden descendente'">
+                  {{ sortState.direction === 'asc' ? '▲' : '▼' }}
+                </span>
+                <span v-else-if="defaultSortOf(index)" class="sort-indicator sort-default" title="Orden por defecto">
+                  {{ defaultSortOf(index).direction === 'desc' ? '▼' : '▲' }}
+                </span>
                 <!-- Icono de filtro (embudo) -->
                 <span
                   class="filter-icon"
@@ -137,7 +144,7 @@
           <!-- Filas de datos (filtradas) -->
           <tr
             v-for="(item, visualIndex) in filteredGrid"
-            :key="item.originalIndex"
+            :key="item.originalIndex + '-' + renderVersion"
             :style="{ height: rowHeights[item.originalIndex] + 'px' }"
             :class="{ 'row-selected': selectedRowIndices.has(item.originalIndex) }"
             @click="emit('rowSelect', { index: item.originalIndex, row: item.row })"
@@ -170,11 +177,13 @@
                 :class="{
                   'active': activeCell.r === visualIndex && activeCell.c === cIndex,
                   'selected': isSelected(visualIndex, cIndex),
-                  'read-only': !isEditMode || item.row.isSummary || cIndex === 0,
+                  'read-only': !isEditMode || item.row.isSummary || cIndex === 0 || isFormulaLocked(cIndex),
+                  'formula-cell': isFormulaColumn(cIndex) && !item.row.isSummary,
+                  'invalid-number': formulaInputs.has(cIndex) && !item.row.isSummary && isInvalidNumber(cell),
                   'summary-cell': item.row.isSummary,
                   'fill-target': isFillTarget(visualIndex, cIndex)
                 }"
-                :title="typeof cell === 'object' && cell !== null ? (cell.tooltip || '') : ''"
+                :title="typeof cell === 'object' && cell !== null ? (cell.tooltip || '') : (columnsConfig[cIndex]?.formula?.description || '')"
                 :data-col-index="cIndex"
                 :data-value="typeof cell === 'object' && cell !== null ? cell.value : cell"
                 :colspan="item.row.isSummary && typeof cell === 'object' && cell !== null ? (cell.colspan || 1) : 1"
@@ -187,7 +196,7 @@
                 @keydown="handleKeydown($event, visualIndex, cIndex)"
                 @copy="handleCopy"
 
-                :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !item.row.isSummary"
+                :contenteditable="isEditMode && cIndex !== 0 && !isColumnSelect(cIndex) && !isFormulaLocked(cIndex) && !item.row.isSummary"
                 @blur="handleBlur($event, item.originalIndex, cIndex)"
               >
                 <!-- Renderizado Condicional: Select o Texto -->
@@ -252,6 +261,9 @@
 
         <span class="page-info">
           Página {{ currentPage }} de {{ totalPages }} (Total: {{ totalItems }})
+          <template v-if="pageFilterActive">
+            · Filtro en esta página: {{ visibleDataRowCount }} de {{ loadedDataRows.length }}
+          </template>
         </span>
 
         <!-- Selector de tamaño de página -->
@@ -282,23 +294,30 @@
       <div class="menu-actions">
         <button class="menu-btn" @click="sortColumn(openMenuIndex, 'asc')">Ordenar A a Z</button>
         <button class="menu-btn" @click="sortColumn(openMenuIndex, 'desc')">Ordenar Z a A</button>
+        <button v-if="sortState.colIndex !== null" class="menu-btn" @click="resetSort">Quitar orden (volver al orden por defecto)</button>
+        <button v-if="activeFilters[openMenuIndex]" class="menu-btn" @click="clearColumnFilter(openMenuIndex)">Borrar filtro de esta columna</button>
       </div>
       <div class="menu-divider"></div>
       <div class="menu-search">
         <input type="text" v-model="menuSearchText" placeholder="Buscar..." class="menu-search-input">
       </div>
       <div class="menu-list">
-        <label class="menu-item bold">
+        <div v-if="menuLoading" class="menu-status">Cargando valores...</div>
+        <div v-else-if="menuError" class="menu-status menu-error">{{ menuError }}</div>
+        <label v-if="!menuLoading" class="menu-item bold">
           <input type="checkbox" :checked="isAllSelected" @change="toggleSelectAll"> (Seleccionar todo)
         </label>
-        <label v-for="val in filteredUniqueValues" :key="val" class="menu-item">
+        <label v-for="val in (menuLoading ? [] : filteredUniqueValues)" :key="val" class="menu-item">
           <input type="checkbox" :checked="tempSelectedValues.has(String(val))" @change="toggleValue(String(val))">
           {{ getFilterLabel(openMenuIndex, val) }}
         </label>
+        <div v-if="menuTruncated && !menuLoading" class="menu-status">
+          Se muestran los primeros {{ currentUniqueValues.length }} valores. Use "Buscar" para encontrar otros.
+        </div>
       </div>
       <div class="menu-footer">
         <button class="btn btn-sm btn-gray" @click="closeFilterMenu">Cancelar</button>
-        <button class="btn btn-sm btn-blue" @click="applyFilter" :disabled="tempSelectedValues.size === 0">Aceptar</button>
+        <button class="btn btn-sm btn-blue" @click="applyFilter" :disabled="menuLoading || tempSelectedValues.size === 0">Aceptar</button>
       </div>
     </div>
 
@@ -320,7 +339,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, reactive, watch, computed } from 'vue';
+import { ref, onMounted, onBeforeUnmount, reactive, watch, computed } from 'vue';
+import { cellPassesSpec, compareCellText, resolveFilterSelection, sortFilterValues } from '../utils/gridFilterLogic';
+import { applyFormulas, formulaInputColumns, isInvalidNumber, normalizeNumberText } from '../utils/gridFormulas';
 
 // --- PROPS ---
 const props = defineProps({
@@ -336,7 +357,22 @@ const props = defineProps({
   totalItems: { type: Number, default: 0 },
   pageSize: { type: Number, default: 25 },
   serverSideFiltering: { type: Boolean, default: false }, // Indica si el filtro lo hace el backend
-  filterData: { type: Array, default: () => [] } // Datos completos para el menú de filtros
+  filterData: { type: Array, default: () => [] }, // Datos completos para el menú de filtros
+  // Opcional (recomendado con serverSideFiltering): función que trae del servidor los valores de una columna.
+  // Firma: (colIndex, specsActivos, textoBuscar) => Promise<{ values, truncated } | null>.
+  // Si devuelve null, la grilla usa filterData o las filas cargadas. Ver utils/gridQuery.js.
+  filterValuesLoader: { type: Function, default: null },
+  // Alcance de los filtros de columna:
+  //  'page' (por defecto): filtran solo las filas de la página cargada; el resultado nunca supera el
+  //          tamaño de página y no se consulta al servidor. Al cambiar de página el filtro se aplica a
+  //          las filas nuevas.
+  //  'all':  filtran todos los registros en el servidor (requiere serverSideFiltering y emite filterChange).
+  // El orden ("Ordenar A a Z") sigue el mismo alcance: en 'page' ordena la página, en 'all' el servidor.
+  filterScope: { type: String, default: 'page', validator: (v) => ['page', 'all'].includes(v) },
+  // Orden por defecto de varios niveles, aplicado a las filas cargadas: [{ colIndex, direction }, ...].
+  // Ej. Ensayos: Fecha ascendente y, dentro de cada fecha, Muestra ascendente. Si el usuario ordena por
+  // una columna, esa pasa a ser el primer criterio y el orden por defecto queda como desempate.
+  defaultSort: { type: Array, default: () => [] }
 });
 
 // --- EMITS ---
@@ -381,6 +417,15 @@ const openMenuIndex = ref(null);
 const menuPosition = ref({ top: 0, left: 0 });
 const menuSearchText = ref('');
 const tempSelectedValues = ref(new Set());
+// Especificación de cada filtro activo en formato de la API ({ in|not_in: [...], empty }), por columna.
+const activeFilterSpecs = ref({});
+// Valores del menú obtenidos del servidor (null = se usan los valores locales).
+const remoteValues = ref(null);
+const menuTruncated = ref(false);
+const menuLoading = ref(false);
+const menuError = ref('');
+let menuRequestId = 0;      // descarta respuestas de peticiones anteriores (si el usuario abre otra columna)
+let searchDebounce = null;
 
 const resizing = reactive({ active: false, type: null, index: null, startPos: 0, startSize: 0 });
 
@@ -390,6 +435,23 @@ const getCellValueStr = (val) => {
     if (val === null || val === undefined) return '';
     if (typeof val === 'object' && val.value !== undefined) return String(val.value);
     return String(val);
+};
+
+// --- COLUMNAS CALCULADAS (columnsConfig[col].formula, ver utils/gridFormulas.js) ---
+
+const isFormulaColumn = (colIndex) => Boolean(props.columnsConfig[colIndex]?.formula);
+// Columnas que alimentan alguna fórmula: deben ser numéricas (se normalizan al pegar y se marcan si no lo son).
+const formulaInputs = computed(() => formulaInputColumns(props.columnsConfig));
+// Columna calculada que el usuario no puede editar (solo la fórmula escribe en ella).
+const isFormulaLocked = (colIndex) => isFormulaColumn(colIndex) && !props.columnsConfig[colIndex].formula.editable;
+
+// Punto único que se ejecuta tras cambiar una celda (escribir, pegar, desplegable, autoincremento):
+// recalcula las fórmulas que dependen de esa columna y luego el rowCalculator propio de la vista.
+const afterCellChange = (row, colIndex) => {
+  applyFormulas(row, colIndex, props.columnsConfig);
+  if (props.rowCalculator && typeof props.rowCalculator === 'function') {
+    props.rowCalculator(row, colIndex);
+  }
 };
 
 // --- HELPERS PARA SELECT/DROPDOWN ---
@@ -416,92 +478,118 @@ const getFilterLabel = (colIndex, value) => {
 
 // --- COMPUTED ---
 
-const filteredGrid = computed(() => {
+// Los filtros se resuelven en el servidor solo con filterScope='all'; en 'page' se filtra lo cargado.
+const filtersOnServer = computed(() => props.serverSideFiltering && props.filterScope === 'all');
+
+// Criterios de orden vigentes: el elegido por el usuario (si hay) y luego el orden por defecto.
+const activeSortKeys = computed(() => {
+    const keys = [];
+    if (sortState.value.colIndex !== null) keys.push({ ...sortState.value });
+    for (const key of props.defaultSort) {
+        if (!keys.some(k => Number(k.colIndex) === Number(key.colIndex))) {
+            keys.push({ colIndex: Number(key.colIndex), direction: key.direction === 'desc' ? 'desc' : 'asc' });
+        }
+    }
+    return keys;
+});
+// Columna de un criterio del orden por defecto (para el indicador gris del encabezado).
+const defaultSortOf = (colIndex) => props.defaultSort.find(k => Number(k.colIndex) === Number(colIndex));
+
+// Filas de datos de la página cargada (sin filas de resumen).
+const loadedDataRows = computed(() => localGrid.value.filter(row => !row.isSummary));
+
+// Calcula qué filas se ven y en qué orden (índices de localGrid), aplicando filtros locales y orden.
+const computeViewOrder = () => {
     let result = localGrid.value.map((row, index) => ({ row, originalIndex: index }));
 
-    // Si el filtrado u ordenamiento lo hace el backend, simplemente retornamos los datos tal cual
-    if (props.serverSideFiltering) {
-        return result;
-    }
-
-    // --- FILTRADO LOCAL (Solo aplica si no hay serverSideFiltering) ---
-    const activeCols = Object.keys(activeFilters.value);
+    // --- FILTRADO LOCAL (todo lo que no filtra el servidor) ---
+    const activeCols = filtersOnServer.value ? [] : Object.keys(activeFilters.value);
     if (activeCols.length > 0) {
         result = result.filter(item => {
             if (item.row.isSummary) return true; // Mantener las filas de resumen siempre visibles
-            return activeCols.every(colIndex => {
-                const allowedValues = activeFilters.value[colIndex];
-                if (!allowedValues) return true;
-                    const cellValue = getCellValueStr(item.row[colIndex]);
-                return allowedValues.has(cellValue);
-            });
+            return activeCols.every(colIndex =>
+                cellPassesSpec(getCellValueStr(item.row[colIndex]), activeFilterSpecs.value[colIndex], activeFilters.value[colIndex])
+            );
         });
     }
 
-    if (sortState.value.colIndex !== null) {
-        const { colIndex, direction } = sortState.value;
-        const isSelect = isColumnSelect(colIndex);
-
+    // El orden se hace aquí salvo con filterScope='all' (ahí lo hace el servidor sobre todos los registros).
+    // Con filtro de página el orden también es de página: si el servidor reordenara, traería otros
+    // registros y el filtro local los ocultaría (los registros "desaparecían").
+    const sortKeys = activeSortKeys.value;
+    if (!filtersOnServer.value && sortKeys.length > 0) {
         const dataRows = result.filter(item => !item.row.isSummary);
         const summaryRows = result.filter(item => item.row.isSummary);
 
+        // En columnas tipo select se ordena por la etiqueta visible (p. ej. el tag de la muestra, no su id).
+        const textOf = (row, colIndex) =>
+            getCellValueStr(isColumnSelect(colIndex) ? getOptionLabel(colIndex, row[colIndex]) : row[colIndex]);
+        // Varios niveles: se pasa al siguiente criterio solo si el anterior empata.
         dataRows.sort((a, b) => {
-            let valA = a.row[colIndex];
-            let valB = b.row[colIndex];
-
-            if (isSelect) {
-                valA = getOptionLabel(colIndex, valA);
-                valB = getOptionLabel(colIndex, valB);
+            for (const { colIndex, direction } of sortKeys) {
+                const diff = compareCellText(textOf(a.row, colIndex), textOf(b.row, colIndex), direction);
+                if (diff !== 0) return diff;
             }
-
-            valA = getCellValueStr(valA).toLowerCase();
-            valB = getCellValueStr(valB).toLowerCase();
-
-            const numA = parseFloat(valA);
-            const numB = parseFloat(valB);
-
-            if (!isNaN(numA) && !isNaN(numB)) {
-                return direction === 'asc' ? numA - numB : numB - numA;
-            }
-
-            if (valA < valB) return direction === 'asc' ? -1 : 1;
-            if (valA > valB) return direction === 'asc' ? 1 : -1;
-            return 0;
+            return a.originalIndex - b.originalIndex; // orden estable
         });
-        
+
         result = [...dataRows, ...summaryRows]; // Reensamblar dejando el resumen al final
     }
 
-    return result;
-});
+    return result.map(item => item.originalIndex);
+};
+
+// Orden visible "congelado": se recalcula al cargar datos o al cambiar filtros/orden, pero NO al editar
+// una celda. Así, como en Excel, una fila no salta de lugar ni desaparece mientras se escribe o pega en
+// ella (antes, con el orden por Fecha/Muestra, pegar en esas columnas reordenaba las filas al instante).
+const viewOrder = ref([]);
+const refreshView = () => { viewOrder.value = computeViewOrder(); };
+
+const filteredGrid = computed(() =>
+    viewOrder.value
+        .filter(index => index < localGrid.value.length)
+        .map(index => ({ row: localGrid.value[index], originalIndex: index }))
+);
+
+watch(
+    [activeFilters, activeFilterSpecs, sortState, () => props.defaultSort, () => props.columnsConfig, filtersOnServer],
+    refreshView,
+    { deep: false }
+);
 
 // --- MENÚ FILTRO ---
 
 const currentUniqueValues = computed(() => {
     if (openMenuIndex.value === null) return [];
-    
-    let sourceData = (props.serverSideFiltering && props.filterData && props.filterData.length > 0) 
-                        ? props.filterData 
-                        : localGrid.value.filter(row => !row.isSummary);
-    
+    const colIndex = openMenuIndex.value;
+    const labelOf = (v) => getFilterLabel(colIndex, v);
+
+    // Valores traídos del servidor: ya vienen con el filtrado cruzado aplicado.
+    if (remoteValues.value !== null) {
+        return sortFilterValues(remoteValues.value, labelOf);
+    }
+
+    // Con alcance 'page' el menú ofrece solo los valores de la página cargada.
+    let sourceData = (filtersOnServer.value && props.filterData && props.filterData.length > 0)
+                        ? props.filterData
+                        : loadedDataRows.value;
+
     // --- FILTRADO CRUZADO ---
     // Identificamos las columnas que ya tienen filtros aplicados, excluyendo la que el usuario acaba de abrir
-    const activeCols = Object.keys(activeFilters.value).filter(col => String(col) !== String(openMenuIndex.value));
+    const activeCols = Object.keys(activeFilters.value).filter(col => String(col) !== String(colIndex));
 
     if (activeCols.length > 0) {
         // Reducimos el universo de datos disponibles verificando que la fila cumpla con los demás filtros activos
         sourceData = sourceData.filter(row => {
-            return activeCols.every(colIndex => {
-                const allowedValues = activeFilters.value[colIndex];
-                if (!allowedValues || allowedValues.size === 0) return true;
-                    const cellValue = getCellValueStr(row[colIndex]);
-                return allowedValues.has(cellValue);
+            return activeCols.every(col => {
+                return cellPassesSpec(getCellValueStr(row[col]), activeFilterSpecs.value[col], activeFilters.value[col]);
             });
         });
     }
 
-    const values = new Set(sourceData.map(row => getCellValueStr(row[openMenuIndex.value])));
-    return Array.from(values).sort();
+    const values = new Set(sourceData.map(row => getCellValueStr(row[colIndex])));
+    // Orden natural ("2" antes que "10") y por etiqueta visible en columnas tipo select.
+    return sortFilterValues(Array.from(values), labelOf);
 });
 
 const filteredUniqueValues = computed(() => {
@@ -513,33 +601,106 @@ const filteredUniqueValues = computed(() => {
     });
 });
 
+// Indicador de la paginación: hay filtros locales sobre una grilla paginada en el servidor.
+const pageFilterActive = computed(() =>
+    props.serverSideFiltering && !filtersOnServer.value && Object.keys(activeFilters.value).length > 0
+);
+const visibleDataRowCount = computed(() => filteredGrid.value.filter(item => !item.row.isSummary).length);
+
 const isAllSelected = computed(() => {
     return filteredUniqueValues.value.every(val => tempSelectedValues.value.has(val));
 });
 
-const toggleFilterMenu = (index, event) => {
+// Pide al servidor los valores de la columna abierta (si la vista dio filterValuesLoader).
+const loadRemoteValues = async (colIndex, search = '') => {
+    if (!props.filterValuesLoader || !filtersOnServer.value) return false;
+    const requestId = ++menuRequestId;
+    menuLoading.value = true;
+    menuError.value = '';
+    try {
+        const result = await props.filterValuesLoader(colIndex, { ...activeFilterSpecs.value }, search);
+        if (requestId !== menuRequestId) return false; // llegó tarde: el usuario ya abrió otra columna
+        if (result === null) { remoteValues.value = null; menuTruncated.value = false; return true; }
+        remoteValues.value = result.values.map(v => String(v));
+        menuTruncated.value = Boolean(result.truncated);
+        return true;
+    } catch (err) {
+        if (requestId !== menuRequestId) return false;
+        console.error('Error cargando valores del filtro:', err);
+        menuError.value = 'No se pudieron cargar los valores del filtro.';
+        remoteValues.value = null; // se usan los valores locales como respaldo
+        return true;
+    } finally {
+        if (requestId === menuRequestId) menuLoading.value = false;
+    }
+};
+
+const toggleFilterMenu = async (index, event) => {
     if (openMenuIndex.value === index) { closeFilterMenu(); return; }
     openMenuIndex.value = index;
     menuSearchText.value = '';
+    remoteValues.value = null;
+    menuTruncated.value = false;
+    searchedOnServer = false;
 
     const th = event.target.closest('th');
     const rect = th.getBoundingClientRect();
     const containerRect = containerRef.value.getBoundingClientRect();
-
+    const MENU_WIDTH = 240;
     menuPosition.value = {
         top: rect.bottom - containerRect.top,
-        left: rect.left - containerRect.left
+        // Se ajusta para que el menú no se salga por la derecha en las últimas columnas.
+        left: Math.max(0, Math.min(rect.left - containerRect.left, containerRect.width - MENU_WIDTH))
     };
+
+    const usesLoader = Boolean(props.filterValuesLoader) && filtersOnServer.value;
+    const loaded = await loadRemoteValues(index);
+    if (loaded === false && usesLoader) return; // respuesta descartada
+    if (openMenuIndex.value !== index) return;
 
     if (activeFilters.value[index]) {
         tempSelectedValues.value = new Set(activeFilters.value[index]);
+        // Con filtro "excluir" los valores nuevos (no excluidos) deben aparecer marcados.
+        const spec = activeFilterSpecs.value[index];
+        if (spec && spec.not_in) {
+            const excluded = new Set(spec.not_in);
+            currentUniqueValues.value.forEach(v => {
+                if (v === '' ? !spec.empty : !excluded.has(v)) tempSelectedValues.value.add(v);
+            });
+        }
     } else {
-            // Inicializamos el menú seleccionando por defecto los valores que sobrevivieron al filtrado cruzado
-            tempSelectedValues.value = new Set(currentUniqueValues.value);
+        // Inicializamos el menú seleccionando por defecto los valores que sobrevivieron al filtrado cruzado
+        tempSelectedValues.value = new Set(currentUniqueValues.value);
     }
 };
 
-const closeFilterMenu = () => { openMenuIndex.value = null; };
+// Con lista truncada, "Buscar" consulta al servidor (con espera de 300 ms entre teclas).
+// Si la lista estaba completa, la búsqueda es local y no hace falta ir al servidor.
+let searchedOnServer = false; // la lista actual es resultado de una búsqueda en el servidor (parcial)
+watch(menuSearchText, (text) => {
+    if (!props.filterValuesLoader || !filtersOnServer.value || openMenuIndex.value === null) return;
+    if (!menuTruncated.value && !searchedOnServer) return;
+    clearTimeout(searchDebounce);
+    const colIndex = openMenuIndex.value;
+    searchDebounce = setTimeout(async () => {
+        const search = text.trim();
+        await loadRemoteValues(colIndex, search);
+        searchedOnServer = Boolean(search);
+        // Los valores encontrados por búsqueda se muestran marcados, como en Excel.
+        currentUniqueValues.value.forEach(v => tempSelectedValues.value.add(v));
+    }, 300);
+});
+
+// La lista del menú no es completa si el servidor la truncó o si es resultado de una búsqueda remota.
+const isMenuListPartial = () => menuTruncated.value || searchedOnServer;
+
+const closeFilterMenu = () => {
+    openMenuIndex.value = null;
+    remoteValues.value = null;
+    searchedOnServer = false;
+    menuError.value = '';
+    clearTimeout(searchDebounce);
+};
 const handleGlobalClick = () => { if (openMenuIndex.value !== null) closeFilterMenu(); };
 
 const toggleValue = (val) => {
@@ -553,39 +714,74 @@ const toggleSelectAll = () => {
     else filteredUniqueValues.value.forEach(v => tempSelectedValues.value.add(String(v)));
 };
 
+// Envía los filtros a la vista: (valores por columna, especificación para la API por columna).
+const emitFilterChange = () => {
+    if (!filtersOnServer.value) return; // con alcance 'page' el filtro es local: no se recarga nada
+    const filtersToSend = {};
+    for (const key in activeFilters.value) {
+        filtersToSend[key] = Array.from(activeFilters.value[key]);
+    }
+    emit('filterChange', filtersToSend, { ...activeFilterSpecs.value });
+};
+
 const applyFilter = () => {
     const index = openMenuIndex.value;
-    
-    // Usamos los valores restringidos actuales para evaluar si el usuario ha seleccionado "(Seleccionar todo)"
-    const allValues = currentUniqueValues.value;
-    
-    let newActiveFilters = { ...activeFilters.value };
+    const result = resolveFilterSelection({
+        selected: tempSelectedValues.value,
+        allValues: currentUniqueValues.value,
+        visibleValues: filteredUniqueValues.value,
+        searchActive: Boolean(menuSearchText.value.trim()),
+        truncated: isMenuListPartial()
+    });
 
-    if (tempSelectedValues.value.size === allValues.length) {
+    const newActiveFilters = { ...activeFilters.value };
+    const newSpecs = { ...activeFilterSpecs.value };
+    if (result.clear) {
         delete newActiveFilters[index];
+        delete newSpecs[index];
     } else {
-        newActiveFilters[index] = new Set(tempSelectedValues.value);
+        newActiveFilters[index] = result.selected;
+        newSpecs[index] = result.spec;
     }
-
     activeFilters.value = newActiveFilters;
+    activeFilterSpecs.value = newSpecs;
 
-    // Si es filtrado tipo backend, emitimos el evento con los nuevos filtros (pasamos arrays nativos)
-    if (props.serverSideFiltering) {
-        const filtersToSend = {};
-        for (const key in activeFilters.value) {
-           filtersToSend[key] = Array.from(activeFilters.value[key]);
-        }
-        emit('filterChange', filtersToSend);
-    }
+    emitFilterChange();
+    closeFilterMenu();
+};
 
+const clearColumnFilter = (index) => {
+    const newActiveFilters = { ...activeFilters.value };
+    const newSpecs = { ...activeFilterSpecs.value };
+    delete newActiveFilters[index];
+    delete newSpecs[index];
+    activeFilters.value = newActiveFilters;
+    activeFilterSpecs.value = newSpecs;
+    emitFilterChange();
+    closeFilterMenu();
+};
+
+// Quita todos los filtros y el orden sin emitir eventos (para cuando la vista reinicia su estado,
+// p. ej. al cambiar de equipo). Se expone con defineExpose.
+// Vuelve al orden por defecto (defaultSort) o al de llegada si no hay.
+const resetSort = () => {
+    sortState.value = { colIndex: null, direction: null };
+    if (filtersOnServer.value) emit('sortChange', { colIndex: null, direction: null });
+    closeFilterMenu();
+};
+
+const clearFilters = () => {
+    activeFilters.value = {};
+    activeFilterSpecs.value = {};
+    sortState.value = { colIndex: null, direction: null };
     closeFilterMenu();
 };
 
 const sortColumn = (colIndex, direction) => {
     sortState.value = { colIndex, direction };
     
-    // Si es paginación de backend, el backend o vista padre debe ordenarlo
-    if (props.serverSideFiltering) {
+    // Solo con filterScope='all' ordena el servidor; en los demás casos se ordena lo cargado (ver filteredGrid).
+    if (filtersOnServer.value) {
         emit('sortChange', { colIndex, direction });
     }
 
@@ -628,6 +824,7 @@ const initGrid = () => {
   } else {
     localGrid.value = [];
   }
+  refreshView();
   rowHeights.value = localGrid.value.map(() => DEFAULT_ROW_HEIGHT);
   calculateAutoWidths();
   window.addEventListener('mousemove', handleResizeMove);
@@ -644,6 +841,7 @@ watch(() => props.data, (newData) => {
       return newRow;
     });
     rowHeights.value = localGrid.value.map(() => DEFAULT_ROW_HEIGHT);
+    refreshView();
     if (colWidths.value.length === 0 || colWidths.value.length !== props.headers.length) {
         calculateAutoWidths();
     }
@@ -674,6 +872,12 @@ const toggleEditMode = () => {
 const promptSave = () => { showSaveModal.value = true; };
 const executeSave = () => { emit('save', localGrid.value); showSaveModal.value = false; };
 
+// Versión de render de las filas: al incrementarla Vue recrea las celdas desde localGrid. Se usa tras
+// un pegado, porque una celda contenteditable editada a mano puede tener un DOM distinto del estado.
+const renderVersion = ref(0);
+// true mientras handlePaste desenfoca la celda: ese blur no debe copiar el texto viejo del DOM al estado.
+let skipBlurSync = false;
+
 const handleInput = () => {
   if (!isTyping.value) {
     isTyping.value = true;
@@ -682,17 +886,22 @@ const handleInput = () => {
 
 const handleBlur = (e, originalRowIndex, c) => {
   isTyping.value = false;
+  if (skipBlurSync) {
+    // Blur provocado por el pegado: el DOM aún muestra el valor anterior. Antes se copiaba ese valor
+    // al estado y la celda donde se hizo clic perdía lo pegado (quedaba vacía o con el valor viejo).
+    skipBlurSync = false;
+    return;
+  }
   if (!isColumnSelect(c)) {
     updateCell(e, originalRowIndex, c);
   }
 };
 
 const updateCell = (e, originalRowIndex, c) => {
+  if (isFormulaLocked(c)) return; // solo la fórmula escribe en esta columna
   if (isEditMode.value) {
     localGrid.value[originalRowIndex][c] = getCleanCellText(e.target);
-    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
-      props.rowCalculator(localGrid.value[originalRowIndex], c);
-    }
+    afterCellChange(localGrid.value[originalRowIndex], c);
   } else {
     e.target.innerText = localGrid.value[originalRowIndex][c];
   }
@@ -700,9 +909,7 @@ const updateCell = (e, originalRowIndex, c) => {
 
 const updateCellSelect = (e, originalRowIndex, c) => {
   localGrid.value[originalRowIndex][c] = e.target.value;
-  if (props.rowCalculator && typeof props.rowCalculator === 'function') {
-    props.rowCalculator(localGrid.value[originalRowIndex], c);
-  }
+  afterCellChange(localGrid.value[originalRowIndex], c);
 };
 
 // --- SELECCIÓN DE FILAS COMPLETAS ---
@@ -736,6 +943,7 @@ const deleteSelectedRows = () => {
     });
 
     selectedRowIndices.value.clear();
+    refreshView(); // los índices de localGrid cambiaron al borrar
 
     if (idsToDelete.length > 0) {
         emit('delete', idsToDelete);
@@ -837,6 +1045,7 @@ const canFillDownCell = (visualR, colIndex) => {
   const item = filteredGrid.value[visualR];
   if (!item || item.row.isSummary) return false;
   if (isColumnSelect(colIndex)) return false;
+  if (isFormulaLocked(colIndex)) return false;
 
   // Si la columna está explícitamente deshabilitada para autoincrementar
   if (props.columnsConfig[colIndex]?.autoIncrementDown === false) {
@@ -915,10 +1124,8 @@ const fillDownSeries = (startVisualR, endVisualR = null, colIndex = null) => {
     const origIdx = item.originalIndex;
     localGrid.value[origIdx][colIndex] = finalVal;
 
-    // Ejecutar el calculador de fila personalizado si está configurado
-    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
-      props.rowCalculator(localGrid.value[origIdx], colIndex);
-    }
+    // Fórmulas dependientes y calculador de fila de la vista
+    afterCellChange(localGrid.value[origIdx], colIndex);
 
     incrementStep++;
   }
@@ -1054,15 +1261,18 @@ const handlePaste = (e, visualRowIndex, startCol) => {
       localGrid.value.push(newRow);
       rowHeights.value.push(DEFAULT_ROW_HEIGHT);
       targetOriginalRow = localGrid.value.length - 1;
+      viewOrder.value.push(targetOriginalRow); // la fila nueva se ve al final
     }
 
     // No sobreescribir filas de resumen si existen
     if (localGrid.value[targetOriginalRow]?.isSummary) return;
 
     const cells = rowStr.split('\t');
+    const pastedCols = [];
     cells.forEach((cellData, cOffset) => {
       const targetCol = startCol + cOffset;
-      if (targetCol < props.headers.length) {
+      // Las columnas calculadas no editables conservan su fórmula: el valor pegado se ignora.
+      if (targetCol < props.headers.length && !isFormulaLocked(targetCol)) {
         let valToPaste = cellData.trim();
         if (isColumnSelect(targetCol)) {
           const options = getColumnOptions(targetCol);
@@ -1071,20 +1281,36 @@ const handlePaste = (e, visualRowIndex, startCol) => {
             String(opt.value).toLowerCase() === valToPaste.toLowerCase()
           );
           if (match) valToPaste = match.value;
+        } else if (formulaInputs.value.has(targetCol)) {
+          // Números de Excel con coma de miles y punto decimal: '1,035.5' -> '1035.5'.
+          const normalized = normalizeNumberText(valToPaste);
+          if (normalized !== null) valToPaste = normalized;
         }
         localGrid.value[targetOriginalRow][targetCol] = valToPaste;
+        pastedCols.push(targetCol);
       }
     });
 
-    if (props.rowCalculator && typeof props.rowCalculator === 'function') {
-      props.rowCalculator(localGrid.value[targetOriginalRow], startCol);
-    }
+    // Se recalculan las fórmulas afectadas por cada columna pegada (antes solo se avisaba la primera).
+    pastedCols.forEach(col => afterCellChange(localGrid.value[targetOriginalRow], col));
   });
 
-  // Desenfocar el elemento activo para evitar que el evento blur sobreescriba con datos antiguos del DOM
+  // Se desenfoca la celda para salir del modo escritura, sin que su blur copie el texto viejo del DOM.
   if (document.activeElement && typeof document.activeElement.blur === 'function') {
+    skipBlurSync = true; // el evento blur se dispara de forma síncrona dentro de blur()
     document.activeElement.blur();
+    skipBlurSync = false;
   }
+  isTyping.value = false;
+  // Las celdas se vuelven a dibujar desde el estado (lo pegado), aunque se hubiera escrito a mano antes.
+  renderVersion.value++;
+  // La selección muestra el bloque pegado, como en Excel.
+  const lastRow = Math.min(visualRowIndex + rows.length - 1, filteredGrid.value.length - 1);
+  const widest = Math.max(...rows.map(r => r.split('\t').length));
+  selection.value = {
+    start: { r: visualRowIndex, c: startCol },
+    end: { r: lastRow, c: Math.min(startCol + widest - 1, props.headers.length - 1) }
+  };
 };
 
 // --- REDIMENSIONAR ---
@@ -1107,9 +1333,19 @@ const addRow = () => {
   const newRow = new Array(props.headers.length).fill('');
   localGrid.value.push(newRow);
   rowHeights.value.push(DEFAULT_ROW_HEIGHT);
+  viewOrder.value.push(localGrid.value.length - 1); // la fila nueva se ve al final
 };
 
 onMounted(() => { initGrid(); });
+
+// Antes los listeners de window quedaban registrados al salir de la vista (fuga de memoria).
+onBeforeUnmount(() => {
+  window.removeEventListener('mousemove', handleResizeMove);
+  window.removeEventListener('mouseup', stopResize);
+  clearTimeout(searchDebounce);
+});
+
+defineExpose({ clearFilters });
 </script>
 
 <style scoped>
@@ -1136,6 +1372,14 @@ onMounted(() => { initGrid(); });
 .filter-icon { cursor: pointer; font-size: 10px; padding: 2px 4px; margin-left: 4px; border-radius: 3px; color: #666; }
 .filter-icon:hover { background-color: #e5e7eb; }
 .filter-icon.active { color: #2563eb; font-weight: bold; }
+.sort-indicator { font-size: 10px; color: #2563eb; margin-left: 2px; }
+.sort-indicator.sort-default { color: #9ca3af; }
+/* Celda de entrada de una fórmula con un valor que no es número (no se puede calcular) */
+.cell.invalid-number { background-color: #fee2e2; color: #991b1b; }
+/* Columnas calculadas por fórmula (p. ej. Peso Prod., % Sol) */
+.cell.formula-cell { background-color: #f0f9ff; color: #0c4a6e; font-style: italic; }
+.menu-status { padding: 6px 4px; color: #6b7280; font-size: 12px; }
+.menu-error { color: #b91c1c; }
 .row-header { background-color: #f3f4f6; width: 40px; min-width: 40px; text-align: center; font-weight: bold; color: #555; user-select: none; position: sticky; left: 0; z-index: 10; border-left: 1px solid #d1d5db; cursor: pointer; }
 .row-header:hover { background-color: #e5e7eb; }
 .header-selected { background-color: #cbd5e1 !important; color: #1e293b; border-right: 2px solid #3b82f6; }
@@ -1196,7 +1440,7 @@ onMounted(() => { initGrid(); });
 .col-resizer { top: 0; right: 0; width: 5px; height: 100%; cursor: col-resize; }
 .row-resizer { bottom: 0; left: 0; width: 100%; height: 5px; cursor: row-resize; }
 .clipboard-helper { position: absolute; left: -9999px; top: 0; }
-.filter-menu { position: absolute; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; width: 220px; z-index: 1000; display: flex; flex-direction: column; font-size: 13px; color: #333; }
+.filter-menu { position: absolute; background: white; border: 1px solid #ccc; box-shadow: 0 4px 12px rgba(0,0,0,0.15); border-radius: 4px; width: 240px; z-index: 1000; display: flex; flex-direction: column; font-size: 13px; color: #333; }
 .menu-actions { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
 .menu-btn { text-align: left; background: none; border: none; padding: 6px; cursor: pointer; border-radius: 3px; }
 .menu-btn:hover { background-color: #f3f4f6; }

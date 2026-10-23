@@ -11,7 +11,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       @save="handleSave"
       @delete="confirmDeleteFromGrid"
       @pageChange="handlePageChange"
@@ -66,6 +66,7 @@ import ExcelGrid from '../../components/ExcelGrid.vue';
 import EquipmentFormModal from '../../components/EquipmentFormModal.vue';
 import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
 import { sanitizeValue } from '../../utils/gridHelpers';
 
@@ -87,7 +88,12 @@ const totalItems = ref(0);
 const pageSize = ref(25);
 const currentFilters = ref({});
 const currentSort = ref({ colIndex: null, direction: null });
-const filterData = ref([]);
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = ['id', 'tag', 'name', 'description', 'system', 'area'];
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('equipments', colToField);
 
 // Modales asistidos y borrado seguro
 const isModalOpen = ref(false);
@@ -110,7 +116,6 @@ const handleRowDblClick = ({ row }) => {
 const onItemSaved = async () => {
   isModalOpen.value = false;
   await loadData(currentPage.value);
-  await loadFilterData();
 };
 
 const confirmDeleteFromGrid = (idsToDelete) => {
@@ -122,23 +127,6 @@ const confirmDeleteFromGrid = (idsToDelete) => {
 const executeConfirmedDelete = async () => {
   isDeleteModalOpen.value = false;
   await handleDelete(pendingDeleteIds.value);
-};
-
-const loadFilterData = async () => {
-    try {
-        const response = await api.get('equipments/', { params: { page_size: 10000 } });
-        const results = response.data.results || response.data;
-        filterData.value = results.map(e => [
-            e.id,
-            e.tag || '',
-            e.name || '',
-            e.description || '',
-            (e.system && typeof e.system === 'object') ? e.system.id : (e.system || ''),
-            (e.area && typeof e.area === 'object') ? e.area.id : (e.area || '')
-        ]);
-    } catch (err) {
-        console.error('Error cargando datos para filtros:', err);
-    }
 };
 
 // Configuración dinámica de columnas para ExcelGrid (Dropdowns)
@@ -168,28 +156,8 @@ const loadData = async (page = 1) => {
         page_size: pageSize.value 
     };
 
-    const colToFieldMap = {
-        0: 'id',
-        1: 'tag',
-        2: 'name',
-        3: 'description',
-        4: 'system',
-        5: 'area'
-    };
-
-    for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-        const fieldName = colToFieldMap[colIndex];
-        if (fieldName && values.length > 0) {
-            params[`${fieldName}__in`] = values.join(','); 
-        }
-    }
-
-    if (currentSort.value.colIndex !== null) {
-        const fieldName = colToFieldMap[currentSort.value.colIndex];
-        if (fieldName) {
-            params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-        }
-    }
+    // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js)
+    Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
     // Carga paralela de recursos: Equipos (Paginados), Sistemas y Áreas para Dropdowns
     const [eqRes, sysRes, areaRes] = await Promise.all([
@@ -246,8 +214,9 @@ const handlePageSizeChange = (newSize) => {
     loadData(1);
 };
 
-const handleFilterChange = (filters) => {
+const handleFilterChange = (filters, specs = {}) => {
     currentFilters.value = filters;
+    currentSpecs.value = specs;
     loadData(1);
 };
 
@@ -288,7 +257,6 @@ const handleSave = async (updatedGrid) => {
     await Promise.all(promises);
     alert('Cambios guardados correctamente.');
     await loadData(currentPage.value);
-    await loadFilterData();
 
   } catch (err) {
     console.error('Error guardando equipos:', err);
@@ -311,7 +279,6 @@ const handleDelete = async (idsToDelete) => {
         await Promise.all(deletePromises);
 
         alert(`${idsToDelete.length} fila(s) eliminada(s) correctamente.`);
-        await loadFilterData();
         await loadData(currentPage.value);
 
     } catch (err) {
@@ -325,7 +292,6 @@ const handleDelete = async (idsToDelete) => {
 
 onMounted(() => {
   loadData();
-  loadFilterData();
 });
 </script>
 

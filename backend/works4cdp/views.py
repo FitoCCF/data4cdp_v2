@@ -19,11 +19,12 @@ from django.contrib.postgres.aggregates import StringAgg
 from django.utils import timezone
 from django_filters import rest_framework as django_filters
 from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters, status, viewsets
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from .grid_filters import GridFilterBackend, GridOrderingFilter, distinct_values
 from .models import (
     Area, Assay, Calendar, CorrectiveTask, Equipment, Estado, Plant, Sample,
     System, Task, TaskCatalog, TaskP, User, UserP,
@@ -106,9 +107,27 @@ class DeleteImpactMixin:
         return Response({'impact': impact})
 
 
-class BaseViewSet(SchemaMixin, viewsets.ModelViewSet):
-    """CRUD estándar con filtros por campo (`filterset_fields`) y ordenamiento (`ordering_fields`)."""
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+class GridValuesMixin:
+    """GET /<recurso>/grid-values/?field=<campo>[&grid_filters=..&search=..&limit=..] para el menú de filtros."""
+
+    @action(detail=False, methods=['get'], url_path='grid-values')
+    def grid_values(self, request):
+        path = request.query_params.get('field')
+        if not path:
+            return Response({'error': "El parámetro 'field' es requerido."}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(distinct_values(self, request, path))
+
+
+class BaseViewSet(SchemaMixin, GridValuesMixin, viewsets.ModelViewSet):
+    """
+    CRUD estándar. Filtros:
+    - `filterset_fields` (DjangoFilterBackend): parámetros clásicos `campo__in`, `campo__gte`, ...
+    - `grid_filters` (GridFilterBackend): filtros de ExcelGrid sobre cualquier campo del modelo y las
+      rutas declaradas en `grid_extra_fields`.
+    - `ordering` (GridOrderingFilter): cualquier campo permitido, con desempate por pk.
+    """
+    filter_backends = [DjangoFilterBackend, GridFilterBackend, GridOrderingFilter]
+    grid_extra_fields = ()
 
 
 # ---------------------------------------------------------------------------
@@ -216,8 +235,11 @@ class EquipmentViewSet(DeleteImpactMixin, BaseViewSet):
 # ---------------------------------------------------------------------------
 
 class TaskViewSet(BaseViewSet):
-    queryset = Task.objects.all()
+    # select_related: TaskSerializer lee task_catalog.name/description en cada fila (evita N+1 consultas).
+    queryset = Task.objects.select_related('task_catalog')
     serializer_class = TaskSerializer
+    grid_extra_fields = ('task_catalog__name', 'equipment__area__plant__name', 'equipment__area__name',
+                         'equipment__system__name', 'equipment__name')
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'task_catalog': ['exact', 'in', 'isnull'],
@@ -235,8 +257,16 @@ class TaskViewSet(BaseViewSet):
 
 
 class TaskPViewSet(BaseViewSet):
-    queryset = TaskP.objects.all()
+    # TaskPSerializer anida task, corrective_task (con su jerarquía de equipo), group y estado. Sin
+    # select_related cada fila disparaba ~10 consultas (500 filas tardaban ~2,7 s).
+    queryset = TaskP.objects.select_related(
+        'task__task_catalog', 'group', 'estado',
+        'corrective_task__task_catalog', 'corrective_task__equipment__area__plant',
+        'corrective_task__equipment__system',
+    )
     serializer_class = TaskPSerializer
+    grid_extra_fields = ('task__equipment__area__plant__name', 'task__equipment__area__name',
+                         'task__equipment__system__name', 'task__equipment__name', 'task__equipment')
     # Para filtrar con varios valores se incluye el lookup 'in' en los campos clave.
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
@@ -282,8 +312,11 @@ class CorrectiveTaskFilter(django_filters.FilterSet):
 
 
 class CorrectiveTaskViewSet(BaseViewSet):
-    queryset = CorrectiveTask.objects.all()
+    # select_related: el serializer lee planta, área, sistema y catálogo de cada fila (evita N+1 consultas).
+    queryset = CorrectiveTask.objects.select_related('task_catalog', 'equipment__area__plant', 'equipment__system')
     serializer_class = CorrectiveTaskSerializer
+    grid_extra_fields = ('task_catalog__name', 'equipment__area__plant__name', 'equipment__area__name',
+                         'equipment__system__name', 'equipment__name')
     filterset_class = CorrectiveTaskFilter
     ordering_fields = ['id', 'equipment', 'creation_date']
 
@@ -354,6 +387,7 @@ class AssayViewSet(BaseViewSet):
     # select_related evita una consulta extra por ensayo al serializar `sample`.
     queryset = Assay.objects.select_related('sample', 'sample__equipment').all()
     serializer_class = AssaySerializer
+    grid_extra_fields = ('sample__tag', 'sample__name')
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'date': ['exact', 'in', 'gte', 'lte', 'isnull'],

@@ -11,7 +11,7 @@
       :totalItems="totalItems"
       :pageSize="pageSize"
       :serverSideFiltering="true"
-      :filterData="filterData"
+      :filterValuesLoader="filterValuesLoader"
       :columnsConfig="columnsConfig"
       @save="handleSave"
       @delete="handleDelete"
@@ -35,6 +35,7 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 // Importamos la instancia de Axios para las peticiones a la API
 import { api } from '../../api';
+import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos el composable global que maneja automáticamente loading y error
 import { useApi } from '../../composables/useApi';
 // Importamos la función de utilidades compartida para construir el payload sanitizado
@@ -47,8 +48,6 @@ const colKeys = ['id', 'nombre', 'apellido', 'email', 'rol', 'group'];
 
 // Creamos la variable reactiva que almacenará la matriz de datos para la grilla
 const gridData = ref([]);
-// Creamos la variable para los datos del menú de filtros del ExcelGrid
-const filterData = ref([]);
 // Almacenamos la lista de Grupos para el menú desplegable
 const userPsList = ref([]);
 
@@ -68,6 +67,12 @@ const pageSize = ref(25);
 const currentFilters = ref({});
 // Objeto que almacena la configuración de ordenamiento (columna y dirección)
 const currentSort = ref({ colIndex: null, direction: null });
+// Especificación de filtros de ExcelGrid para la API ({ in|not_in, empty } por columna).
+const currentSpecs = ref({});
+// Campo de la API que corresponde a cada columna de la grilla (por índice).
+const colToField = colKeys;
+// Carga los valores del menú de filtros desde el servidor (solo la columna abierta).
+const filterValuesLoader = createGridValuesLoader('users', colToField);
 
 // --- Configuración de Columnas (Dropdown para Grupos) ---
 const columnsConfig = computed(() => {
@@ -79,29 +84,6 @@ const columnsConfig = computed(() => {
     };
 });
 
-// Función que carga todos los datos para poblar los checkboxes de filtros
-const loadFilterData = async () => {
-    try {
-        // Hacemos un GET pidiendo hasta 10000 registros para abarcar las opciones de filtrado
-        const res = await api.get('users/', { params: { page_size: 10000 } });
-        // Extraemos los resultados paginados o la lista cruda
-        const results = res.data.results || res.data;
-        
-        // Mapeamos los objetos JSON a una matriz plana bidimensional para el ExcelGrid
-        filterData.value = results.map(u => [
-            u.id,
-            u.nombre || '',
-            u.apellido || '',
-            u.email || '',
-            u.rol || '',
-            (u.group && typeof u.group === 'object') ? u.group.id : (u.group || '')
-        ]);
-    } catch(e) {
-        // Si falla en silencio, lo registramos en consola (no bloquea la UI principal)
-        console.error("Error al cargar los filtros:", e);
-    }
-};
-
 // Función principal que trae los usuarios aplicando la paginación y filtros
 const loadData = async (page = 1) => {
     // Usamos el composable execute para mostrar el spinner y capturar errores
@@ -109,32 +91,8 @@ const loadData = async (page = 1) => {
         // Preparamos los parámetros de la URL (querystring)
         const params = { page, page_size: pageSize.value };
         
-        // Iteramos los filtros activos para añadirlos a los parámetros de Django
-        for (const [colIndex, values] of Object.entries(currentFilters.value)) {
-            // Obtenemos el nombre real del campo (ej: 'nombre')
-            const fieldName = colKeys[colIndex];
-            // Procesamos los valores y si existe un filtro por vacíos, usamos __isnull
-            if (fieldName && values.length > 0) {
-                const vals = Array.from(values);
-                const validVals = vals.filter(v => v !== '');
-                if (validVals.length > 0) {
-                    params[`${fieldName}__in`] = validVals.join(',');
-                }
-                if (vals.includes('')) {
-                    params[`${fieldName}__isnull`] = 'True';
-                }
-            }
-        }
-        
-        // Si hay un ordenamiento activo, lo añadimos a los parámetros
-        if (currentSort.value.colIndex !== null) {
-            // Obtenemos el campo por el que se quiere ordenar
-            const fieldName = colKeys[currentSort.value.colIndex];
-            if (fieldName) {
-                // Si es descendente, agregamos el guion '-' que Django espera (ej: '-nombre')
-                params.ordering = currentSort.value.direction === 'desc' ? `-${fieldName}` : fieldName;
-            }
-        }
+        // Filtros y orden de ExcelGrid (grid_filters + ordering, ver utils/gridQuery.js)
+        Object.assign(params, buildGridParams({ specs: currentSpecs.value, sort: currentSort.value, colToField }));
 
         // Ejecutamos la petición GET a usuarios y grupos simultáneamente
         const [resUsers, resGroups] = await Promise.all([
@@ -176,7 +134,7 @@ const loadData = async (page = 1) => {
 // Funciones proxy que escuchan eventos del ExcelGrid y recargan los datos
 const handlePageChange = (p) => loadData(p);
 const handlePageSizeChange = (s) => { pageSize.value = s; loadData(1); };
-const handleFilterChange = (f) => { currentFilters.value = f; loadData(1); };
+const handleFilterChange = (f, specs = {}) => { currentFilters.value = f; currentSpecs.value = specs; loadData(1); };
 const handleSortChange = (s) => { currentSort.value = s; loadData(1); };
 
 // Función que guarda las ediciones o creaciones
@@ -223,7 +181,6 @@ const handleSave = async (updatedGrid) => {
             alert('Usuarios guardados correctamente.');
             // Recargamos los datos para reflejar los IDs nuevos del backend
             await loadData(currentPage.value);
-            await loadFilterData();
         });
     } catch (e) {
         // Solo alertamos visualmente, la consola la gestiona useApi
@@ -244,7 +201,6 @@ const handleDelete = async (idsToDelete) => {
             alert(`${idsToDelete.length} usuario(s) eliminado(s).`);
             // Refrescamos la tabla
             await loadData(currentPage.value);
-            await loadFilterData();
         });
     } catch (e) {
         alert('Error al eliminar usuarios.');
@@ -255,8 +211,6 @@ const handleDelete = async (idsToDelete) => {
 onMounted(() => {
     // Gatilla la carga principal de datos
     loadData();
-    // Gatilla la carga en segundo plano de los filtros
-    loadFilterData();
 });
 </script>
 

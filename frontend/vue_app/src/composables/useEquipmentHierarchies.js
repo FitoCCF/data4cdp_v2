@@ -3,8 +3,9 @@ import { api } from '../api';
 
 /**
  * Composable para encapsular la lógica de jerarquía de equipos (Planta -> Área -> Sistema -> Equipo).
- * Permite cargar los catálogos en memoria, obtener nombres relacionales para las filas
- * y traducir los filtros de texto del frontend a IDs válidos para el backend.
+ * Permite cargar los catálogos en memoria y obtener los nombres relacionales para las filas.
+ * (Los filtros por jerarquía ya no se traducen aquí: la API los resuelve con grid_filters,
+ * ver utils/gridQuery.js y backend/works4cdp/grid_filters.py.)
  */
 export function useEquipmentHierarchies() {
     const equipmentsList = ref([]);
@@ -57,106 +58,6 @@ export function useEquipmentHierarchies() {
         };
     };
 
-    // Intercepta los filtros marcados por el usuario y los traduce a un listado de IDs compatibles con 'equipment__in'
-    const processEquipmentFilters = (currentFilters, colIndices) => {
-        let eqFilterIds = null;
-        // Se reciben los índices de columna para cada nivel de la jerarquía
-        const { plant, area, system, equipment } = colIndices;
-
-        for (const [colIndex, values] of Object.entries(currentFilters)) {
-            if (values.length === 0) continue;
-
-            const valsArray = Array.from(values);
-
-            if (colIndex === plant || colIndex === area || colIndex === system) {
-                const validIds = equipmentsList.value.filter(eq => {
-                    const areaObj = areasMap.value[eq.area] || {};
-                    const plantObj = plantsMap.value[areaObj.plant] || {};
-                    const sysObj = systemsMap.value[eq.system] || {};
-
-                    if (colIndex === plant) return valsArray.includes(plantObj.name || '');
-                    if (colIndex === area) return valsArray.includes(areaObj.name || '');
-                    if (colIndex === system) return valsArray.includes(sysObj.name || '');
-                    return false;
-                }).map(eq => String(eq.id));
-
-                // Si se incluyó "(Vacías)", agregamos explícitamente el valor vacío al arreglo de IDs válidos
-                if (valsArray.includes('')) {
-                    validIds.push('');
-                }
-
-                eqFilterIds = eqFilterIds === null ? validIds : eqFilterIds.filter(id => validIds.includes(id));
-            } else if (colIndex === equipment) {
-                const stringValues = valsArray.map(v => String(v));
-                eqFilterIds = eqFilterIds === null ? stringValues : eqFilterIds.filter(id => stringValues.includes(id));
-            }
-        }
-
-        return eqFilterIds;
-    };
-
-    /**
-     * Construye el objeto de parámetros de consulta final para una petición a la API,
-     * manejando tanto filtros estándar como los filtros complejos basados en la jerarquía.
-     * @param {object} baseParams - Parámetros iniciales como paginación.
-     * @param {object} currentFilters - El objeto de filtros activos de la grilla.
-     * @param {Array<string>} colKeys - El mapeo de índices de columna a nombres de campo.
-     * @param {object} hierarchyColIndices - Un mapa de los índices de las columnas de jerarquía. Ej: { plant: '7', area: '8', ... }.
-     * @returns {object} El objeto de parámetros final para la llamada a la API.
-     */
-    const buildFilterParams = (baseParams, currentFilters, colKeys, hierarchyColIndices) => {
-        const params = { ...baseParams };
-        const hierarchyIndexes = Object.values(hierarchyColIndices);
-
-        // 1. Manejar filtros estándar (aquellos que no son parte de la jerarquía)
-        for (const [colIndex, values] of Object.entries(currentFilters)) {
-            if (hierarchyIndexes.includes(String(colIndex)) || values.length === 0) {
-                continue;
-            }
-            
-            
-                            
-            const fieldName = colKeys[colIndex];
-            if (fieldName && !fieldName.includes('__')) {
-                const vals = Array.from(values);
-                const validVals = vals.filter(v => v !== '');
-                if (validVals.length > 0) {
-                    params[`${fieldName}__in`] = validVals.join(',');
-                }
-                if (vals.includes('')) {
-                    params[`${fieldName}__isnull`] = 'True';
-                }
-            }
-
-
-
-
-
-
-
-
-
-
-
-        }
-
-        // 2. Manejar filtros de jerarquía, traduciéndolos a un único 'equipment__in'
-        const eqFilterIds = processEquipmentFilters(currentFilters, hierarchyColIndices);
-        if (eqFilterIds !== null) {
-            const validEqVals = eqFilterIds.filter(v => v !== '');
-            if (validEqVals.length > 0) {
-                params['equipment__in'] = validEqVals.join(',');
-            } else if (!eqFilterIds.includes('')) {
-                params['equipment__in'] = '-1';
-            }
-            if (eqFilterIds.includes('')) {
-                params['equipment__isnull'] = 'True';
-            }
-        }
-
-        return params;
-    };
-
     return {
         equipmentsList,
         plantsList,
@@ -166,7 +67,6 @@ export function useEquipmentHierarchies() {
         areasMap,
         systemsMap,
         loadDependencies,
-        getEquipmentHierarchyRow,
-        buildFilterParams
+        getEquipmentHierarchyRow
     };
 }

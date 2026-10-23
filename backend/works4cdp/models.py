@@ -296,7 +296,7 @@ class AssaysPsi(models.Model):
     dweight = models.FloatField(null=True, blank=True) # Peso en seco
     psolid = models.FloatField(null=True, blank=True) # Porcentaje de sólidos
     
-    # Porcentajes de material retenido en distintas mallas de criba (Malla 48, 65, 100...)
+    # Peso retenido por malla (Malla 48, 65, 100...), en unidades de peso. Lo entrega el laboratorio metalúrgico
     pW48 = models.FloatField(null=True, blank=True)
     pW65 = models.FloatField(null=True, blank=True)
     pW100 = models.FloatField(null=True, blank=True)
@@ -323,7 +323,7 @@ class AssaysPsi(models.Model):
     P80 = models.FloatField(null=True, blank=True) # Tamaño al que pasa el 80% del material
     P50 = models.FloatField(null=True, blank=True) # Tamaño al que pasa el 50% del material (mediana)
     
-    # Cálculos adicionales para tamaño por malla
+    # Retenido por malla en porcentaje (Malla 48, 65, 100...). Se calcula manualmente
     pP48 = models.FloatField(null=True, blank=True)
     pP65 = models.FloatField(null=True, blank=True)
     pP100 = models.FloatField(null=True, blank=True)

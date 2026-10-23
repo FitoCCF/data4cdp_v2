@@ -9,11 +9,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        //target: 'http://django_backend:8000',
-        target: 'http://data4cdpv1-backend-1:8000',
+        target: 'http://django_backend:8000',
+        //target: 'http://data4cdpv1-backend-1:8000',
         changeOrigin: false,
         secure: false
-      }
+      },
 
     }
   }

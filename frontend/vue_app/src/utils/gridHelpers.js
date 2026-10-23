@@ -29,15 +29,19 @@ export const sanitizeValue = (val, isNumeric = false) => {
  * @param {string[]} colKeys - All column keys in the grid
  * @returns {string} The backend payload key
  */
+// Los nombres deben coincidir con los campos de escritura de los serializers del backend
+// (contrato verificado en backend/works4cdp/tests/test_api.py -> ContratoConElFrontendTests).
+// Corrección: antes 'user' se enviaba como 'user_id' y 'group' como 'group_id'; AssaySerializer y
+// UserSerializer esperan 'user' y 'group', así que DRF ignoraba esos valores y no se guardaban.
+// Se quitaron también 'usuario' y 'userp', que ningún grid usa.
 export const mapGridKeyToPayload = (key, colKeys = []) => {
-  if (key === 'task') return 'task_id';
-  if (key === 'usuario') return 'usuario_id';
-  if (key === 'estado') return 'estado_id';
-  if (key === 'user') return 'user_id';
-  if (key === 'userp') return 'user';
-  if (key === 'sample') return 'sample_id';
+  if (key === 'task') return 'task_id';       // TaskPSerializer
+  if (key === 'estado') return 'estado_id';   // TaskPSerializer
+  if (key === 'sample') return 'sample_id';   // AssaySerializer
   if (key === 'group') {
-    return colKeys.includes('task') ? 'usuario_id' : 'group_id';
+    // En la grilla de tareas programadas (TaskP) el campo de escritura es group_id;
+    // en la de usuarios (User) es group.
+    return colKeys.includes('task') ? 'group_id' : 'group';
   }
   return key;
 };

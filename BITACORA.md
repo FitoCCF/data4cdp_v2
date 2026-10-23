@@ -38,3 +38,28 @@ Registro de cambios hechos y de temas pendientes de revisión.
 - PSI Molienda C2 (172.18.16.192): API `psi2dcs` en :8082 activa; accesible desde el contenedor del backend. Solo últimos 100 registros, sin distribución granulométrica, hora mal formada (`06: 7:42`).
 - Solo el equipo 7 (Molienda C2) tiene muestras (L1 id 32, L2 id 33); faltan las de los otros 3 PSI.
 - Pendiente: serializer/viewset y servicio de importación de `AssaysPsi`; convención de signo de `aP*` (retenido vs pasante); modificar `psi2dcs.js` requiere reiniciar el servicio (necesita confirmación).
+
+## 2026-10-23 — Pruebas unitarias, de API y QA de datos
+
+### Cómo ejecutar
+- Backend (76 pruebas; crea y destruye `test_mydb`, no toca `mydb`):
+  `docker exec django_backend python manage.py test works4cdp --settings=data4cdp_v1.settings_test`
+- Frontend (28 pruebas, Vitest): `docker exec vue_frontend sh -c 'cd /app/vue_app && npm test'`
+- QA de datos sobre la base real (solo lectura): `docker exec django_backend python manage.py qa_db`
+
+### Errores encontrados y corregidos
+- **Grilla de usuarios y de ensayos no guardaba `group` ni `user`.** `gridHelpers.mapGridKeyToPayload` enviaba `group_id` y `user_id`, pero `UserSerializer` y `AssaySerializer` esperan `group` y `user`; DRF los ignoraba sin error. Corregido y cubierto por `ContratoConElFrontendTests` y `tests/gridHelpers.test.js`.
+- **Paginación de `/api/userp/` sin orden** (UnorderedObjectListWarning): podía repetir u omitir grupos entre páginas. Se ordena por `id`.
+
+### Hallazgos sin corregir (pendientes de decisión)
+- **Las migraciones no se pueden aplicar en una base vacía**: la 0005 crea un constraint `works4cdp_assay_pkey`, mismo nombre que la PK. Las pruebas lo esquivan (`works4cdp/test_runner.py`), pero reconstruir la base desde cero fallaría.
+- **`template1` de PostgreSQL con versión de collation inconsistente** (imagen Alpine): impide `CREATE DATABASE` normal; requiere `ALTER DATABASE ... REFRESH COLLATION VERSION`.
+- ~~`TaskP.estado` con `default=1` (R)~~ → corregido a `default=2` (P) en la migración 0018 (aplicada el 2026-10-23; datos sin cambios: R=1046, P=6403, D=38).
+- **Resultados de `qa_db`** (2026-10-23): 10 `chemical_id` repetidos; 1.153 con `chemical_id` >= 100000 (timestamps Unix); 17 ensayos duplicados por (muestra, fecha, hora, instancia); 25 con fecha < 2015 (se conservan); 1 con %Sol = 295 (id 9980); 2 con peso seco > neto (ids 15637, 9980); 8 TaskP huérfanas (jun-2026); 5 usuarios sin login de Django.
+- Filtro de jerarquía en grillas: si se marcan valores y "(Vacías)" a la vez se envían `equipment__in` y `equipment__isnull` juntos y el backend los combina con AND (sin resultados).
+- `npm audit` reporta avisos en dependencias del frontend; revisar.
+
+### Estados de TaskP (tabla works4cdp_estado)
+- 1 = R (Realizado), 2 = P (Pendiente), 3 = D (Deshabilitado), 10 = S (significado no recordado; se conserva).
+
+- Salida completa de pruebas y QA: `qa/resultados_2026-10-23.md`.

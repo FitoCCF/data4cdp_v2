@@ -151,7 +151,9 @@ class TaskP(models.Model):
     date = models.DateField()                 # Fecha exacta planificada originally
     
     # --- DATOS DE EJECUCIÓN REAL ---
-    estado = models.ForeignKey(Estado, on_delete=models.CASCADE, default=1) # Vincula al modelo de estados; Default = 1 (Pendiente)
+    # Estados en BD: 1 = R (Realizado), 2 = P (Pendiente), 3 = D (Deshabilitado), 10 = S (significado no documentado).
+    # Por defecto P (id 2). Antes era default=1, que en realidad es R: una tarea sin estado quedaba como realizada.
+    estado = models.ForeignKey(Estado, on_delete=models.CASCADE, default=2)
     completion_date = models.DateTimeField(null=True, blank=True)           # Cuándo se completó en realidad
     comments = models.TextField(null=True, blank=True)                      # Notas puestas por el operador al terminar
     

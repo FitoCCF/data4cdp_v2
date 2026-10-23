@@ -309,7 +309,9 @@ class UserViewSet(BaseViewSet):
 
 class UserPViewSet(BaseViewSet):
     """API endpoint para el modelo de Grupos (UserP)."""
-    queryset = UserP.objects.all()
+    # UserP no define `ordering` en su Meta; sin orden explícito la paginación puede repetir u omitir
+    # registros entre páginas (DRF emite UnorderedObjectListWarning).
+    queryset = UserP.objects.order_by('id')
     serializer_class = UserPSerializer
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],

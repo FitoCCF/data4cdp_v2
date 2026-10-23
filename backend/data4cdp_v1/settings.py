@@ -21,12 +21,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-^-^t!+s7e^hvx4&1v$!!c6-m54s!e=fg^cw_j6)a*3#pv#rj$k'
+# Los valores sensibles se leen del entorno. El valor por defecto se mantiene SOLO para no romper
+# el despliegue actual; en producción hay que definir DJANGO_SECRET_KEY (y DJANGO_DEBUG=false).
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-^-^t!+s7e^hvx4&1v$!!c6-m54s!e=fg^cw_j6)a*3#pv#rj$k',
+)
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
-ALLOWED_HOSTS = ['*']
+# Lista separada por comas, p. ej. DJANGO_ALLOWED_HOSTS=intranet.local,10.0.0.5
+ALLOWED_HOSTS = os.environ.get('DJANGO_ALLOWED_HOSTS', '*').split(',')
 
 
 # Application definition
@@ -83,9 +89,9 @@ WSGI_APPLICATION = 'data4cdp_v1.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'mydb',
-        'USER': 'myuser',
-        'PASSWORD': 'mypassword',
+        'NAME': os.environ.get('DB_NAME', 'mydb'),
+        'USER': os.environ.get('DB_USER', 'myuser'),
+        'PASSWORD': os.environ.get('DB_PASSWORD', 'mypassword'),
         'HOST': os.environ.get('DB_HOST', 'postgres_db'),
         'PORT': os.environ.get('DB_PORT', '5432'),
     }
@@ -134,7 +140,10 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOW_ALL_ORIGINS = True
+# Por defecto se permite cualquier origen (comportamiento actual). Para restringirlo:
+# CORS_ALLOWED_ORIGINS=http://host1:5173,http://host2:5173
+CORS_ALLOWED_ORIGINS = [o for o in os.environ.get('CORS_ALLOWED_ORIGINS', '').split(',') if o]
+CORS_ALLOW_ALL_ORIGINS = not CORS_ALLOWED_ORIGINS
 
 # Django REST Framework Settings
 # Habilitar Paginación Global

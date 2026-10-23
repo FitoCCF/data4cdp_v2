@@ -1,15 +1,8 @@
+from django.apps import apps
 from django.contrib import admin
-from .models import (
-    Estado, Plant, Area, System, Equipment, Task, TaskP, User, CorrectiveTask
-)
 
-admin.site.register(Estado)
-admin.site.register(Plant)
-admin.site.register(Area)
-admin.site.register(System)
-admin.site.register(Equipment)
-admin.site.register(Task)
-admin.site.register(TaskP)
-admin.site.register(User)
-admin.site.register(CorrectiveTask)
-
+# Se registran todos los modelos de la app automáticamente. Antes solo había 9 registrados a mano
+# y faltaban Sample, Assay, AssaysPsi, Calendar, TaskCatalog, TaskGroupAssignment y UserP.
+for model in apps.get_app_config('works4cdp').get_models():
+    if not admin.site.is_registered(model):
+        admin.site.register(model)

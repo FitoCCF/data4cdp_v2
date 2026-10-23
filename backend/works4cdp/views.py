@@ -1,41 +1,133 @@
-from django.db import connection
-from django.shortcuts import render, get_object_or_404
-from rest_framework import viewsets, status
+"""
+Vistas (API REST) de la aplicación works4cdp.
+
+Refactorización respecto a la versión anterior:
+- Se eliminaron los imports con asterisco (`from .models import *`), que ocultaban de dónde venía
+  cada nombre y provocaron un NameError latente (`time` se usaba sin importarse).
+- El endpoint `/schema/` (copiado en 12 ViewSets) y `/delete-impact/` (copiado en 4) pasaron a mixins.
+- La configuración de filtros/orden común pasó a `BaseViewSet`.
+- La regla de chemical_id se reutiliza desde `AssaySyncService` en vez de duplicarse.
+- `WeeklyTaskView` ahora valida sus parámetros en lugar de fallar con error 500.
+"""
+import logging
+from datetime import datetime
+
+from django.db import connection, transaction
+from django.db.models import BooleanField, Case, F, Value, When
+from django.db.models.functions import Coalesce
+from django.contrib.postgres.aggregates import StringAgg
+from django.utils import timezone
+from django_filters import rest_framework as django_filters
+from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import *
-from .serializers import *
 from rest_framework.views import APIView
 
-# Importaciones adicionales para el filtrado avanzado y el modelo User de Django
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import filters
-from django.db.models import F, Value, Case, When, BooleanField, Max
-from django.db.models.functions import Concat, Coalesce
-from django.contrib.postgres.aggregates import StringAgg
-from django_filters import rest_framework as django_filters
+from .models import (
+    Area, Assay, Calendar, CorrectiveTask, Equipment, Estado, Plant, Sample,
+    System, Task, TaskCatalog, TaskP, User, UserP,
+)
+from .serializers import (
+    AreaSerializer, AssaySerializer, CalendarSerializer, CorrectiveTaskSerializer,
+    EquipmentSerializer, EstadoSerializer, PlantSerializer, SampleSerializer,
+    SystemSerializer, TaskCatalogSerializer, TaskPSerializer, TaskSerializer,
+    UserPSerializer, UserSerializer,
+)
 
-# ViewSet para cada modelo con un nuevo endpoint `/schema/`
-class EstadoViewSet(viewsets.ModelViewSet):
+logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Piezas reutilizables
+# ---------------------------------------------------------------------------
+
+def parse_iso_date(value):
+    """
+    Convierte 'YYYY-MM-DD' en `date`.
+    Devuelve (fecha, None) si es válida, (None, mensaje) si el formato es incorrecto
+    y (None, None) si no se envió valor.
+    """
+    if not value:
+        return None, None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date(), None
+    except ValueError:
+        return None, f"Formato de fecha inválido: {value}. Use YYYY-MM-DD."
+
+
+def error_response(message, http_status):
+    """Respuesta de error con el formato {"status": "error", "error": ...} que ya consume el frontend."""
+    return Response({"status": "error", "error": message}, status=http_status)
+
+
+class SchemaMixin:
+    """Agrega GET /<recurso>/schema/ que lista los nombres de campo del modelo (antes copiado en cada ViewSet)."""
+
+    @action(detail=False, methods=['get'], url_path='schema')
+    def schema(self, request):
+        fields = [field.name for field in self.queryset.model._meta.fields]
+        return Response({'fields': fields})
+
+
+class DeleteImpactMixin:
+    """
+    Agrega /<recurso>/delete-impact/ (GET con ?ids=1,2 o POST con {"ids": [...]}) que informa
+    cuántos registros dependientes se borrarían en cascada.
+
+    Cada ViewSet declara `impact_counts`: un dict ordenado {nombre_campo: función(obj) -> int}.
+    El resultado incluye esos conteos más `total_impact` (su suma), igual que antes.
+    """
+    impact_counts = {}
+
+    def _requested_ids(self, request):
+        """Lee los IDs pedidos y descarta los que no sean enteros (antes un valor inválido causaba error 500)."""
+        raw = request.data.get('ids', []) if request.method == 'POST' else request.query_params.get('ids', '').split(',')
+        ids = []
+        for item in raw:
+            try:
+                ids.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return ids
+
+    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
+    def delete_impact(self, request):
+        impact = []
+        for obj in self.queryset.model.objects.filter(id__in=self._requested_ids(request)):
+            counts = {name: count(obj) for name, count in self.impact_counts.items()}
+            impact.append({
+                'id': obj.id,
+                'tag': obj.tag,
+                'name': obj.name,
+                **counts,
+                'total_impact': sum(counts.values()),
+            })
+        return Response({'impact': impact})
+
+
+class BaseViewSet(SchemaMixin, viewsets.ModelViewSet):
+    """CRUD estándar con filtros por campo (`filterset_fields`) y ordenamiento (`ordering_fields`)."""
+    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
+
+
+# ---------------------------------------------------------------------------
+# Jerarquía de activos: Planta > Área > Equipo, y Sistema
+# ---------------------------------------------------------------------------
+
+class EstadoViewSet(BaseViewSet):
     queryset = Estado.objects.all()
     serializer_class = EstadoSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'estado_nombre': ['exact', 'in', 'icontains', 'isnull']
     }
     ordering_fields = ['id', 'estado_nombre']
 
-    # Endpoint `/schema/`
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Estado._meta.fields]  # Lista de campos del modelo
-        return Response({'fields': fields})
 
-class TaskCatalogViewSet(viewsets.ModelViewSet):
+class TaskCatalogViewSet(BaseViewSet):
     queryset = TaskCatalog.objects.all()
     serializer_class = TaskCatalogSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'name': ['exact', 'in', 'icontains', 'isnull'],
@@ -43,65 +135,29 @@ class TaskCatalogViewSet(viewsets.ModelViewSet):
     }
     ordering_fields = ['id', 'name', 'description']
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in TaskCatalog._meta.fields]
-        return Response({'fields': fields})
 
-class PlantViewSet(viewsets.ModelViewSet):
-    # Consulta base que obtiene todos los registros del modelo Plant
+class PlantViewSet(DeleteImpactMixin, BaseViewSet):
     queryset = Plant.objects.all()
-    # Define el serializador encargado de convertir objetos Plant a JSON (y viceversa)
     serializer_class = PlantSerializer
-    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'tag': ['exact', 'in', 'icontains', 'isnull'],
         'name': ['exact', 'in', 'icontains', 'isnull'],
         'description': ['exact', 'in', 'icontains', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados (ej: ?ordering=name)
     ordering_fields = ['id', 'tag', 'name', 'description']
+    impact_counts = {
+        'areas_count': lambda plant: plant.area_set.count(),
+        'equipments_count': lambda plant: Equipment.objects.filter(area__plant=plant).count(),
+        'tasks_count': lambda plant: Task.objects.filter(equipment__area__plant=plant).count(),
+        'correctives_count': lambda plant: CorrectiveTask.objects.filter(equipment__area__plant=plant).count(),
+        'samples_count': lambda plant: Sample.objects.filter(equipment__area__plant=plant).count(),
+    }
 
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Plant._meta.fields]
-        return Response({'fields': fields})
-
-    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
-    def delete_impact(self, request):
-        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
-        impact = []
-        for plant in Plant.objects.filter(id__in=ids):
-            areas_count = plant.area_set.count()
-            equipments_count = Equipment.objects.filter(area__plant=plant).count()
-            tasks_count = Task.objects.filter(equipment__area__plant=plant).count()
-            correctives_count = CorrectiveTask.objects.filter(equipment__area__plant=plant).count()
-            samples_count = Sample.objects.filter(equipment__area__plant=plant).count()
-            impact.append({
-                'id': plant.id,
-                'tag': plant.tag,
-                'name': plant.name,
-                'areas_count': areas_count,
-                'equipments_count': equipments_count,
-                'tasks_count': tasks_count,
-                'correctives_count': correctives_count,
-                'samples_count': samples_count,
-                'total_impact': areas_count + equipments_count + tasks_count + correctives_count + samples_count
-            })
-        return Response({'impact': impact})
-
-class AreaViewSet(viewsets.ModelViewSet):
-    # Consulta base que obtiene todos los registros del modelo Area
+class AreaViewSet(DeleteImpactMixin, BaseViewSet):
     queryset = Area.objects.all()
-    # Define el serializador encargado de convertir objetos Area a JSON (y viceversa)
     serializer_class = AreaSerializer
-    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'tag': ['exact', 'in', 'icontains', 'isnull'],
@@ -109,86 +165,36 @@ class AreaViewSet(viewsets.ModelViewSet):
         'description': ['exact', 'in', 'icontains', 'isnull'],
         'plant': ['exact', 'in', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'plant']
+    impact_counts = {
+        'equipments_count': lambda area: area.equipment_set.count(),
+        'tasks_count': lambda area: Task.objects.filter(equipment__area=area).count(),
+        'correctives_count': lambda area: CorrectiveTask.objects.filter(equipment__area=area).count(),
+        'samples_count': lambda area: Sample.objects.filter(equipment__area=area).count(),
+    }
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Area._meta.fields]
-        return Response({'fields': fields})
 
-    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
-    def delete_impact(self, request):
-        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
-        impact = []
-        for area in Area.objects.filter(id__in=ids):
-            equipments_count = area.equipment_set.count()
-            tasks_count = Task.objects.filter(equipment__area=area).count()
-            correctives_count = CorrectiveTask.objects.filter(equipment__area=area).count()
-            samples_count = Sample.objects.filter(equipment__area=area).count()
-            impact.append({
-                'id': area.id,
-                'tag': area.tag,
-                'name': area.name,
-                'equipments_count': equipments_count,
-                'tasks_count': tasks_count,
-                'correctives_count': correctives_count,
-                'samples_count': samples_count,
-                'total_impact': equipments_count + tasks_count + correctives_count + samples_count
-            })
-        return Response({'impact': impact})
-
-class SystemViewSet(viewsets.ModelViewSet):
-    # Consulta base que obtiene todos los registros del modelo System
+class SystemViewSet(DeleteImpactMixin, BaseViewSet):
     queryset = System.objects.all()
-    # Define el serializador encargado de convertir objetos System a JSON (y viceversa)
     serializer_class = SystemSerializer
-    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'tag': ['exact', 'in', 'icontains', 'isnull'],
         'name': ['exact', 'in', 'icontains', 'isnull'],
         'description': ['exact', 'in', 'icontains', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description']
+    impact_counts = {
+        'equipments_count': lambda system: system.equipment_set.count(),
+        'tasks_count': lambda system: Task.objects.filter(equipment__system=system).count(),
+        'correctives_count': lambda system: CorrectiveTask.objects.filter(equipment__system=system).count(),
+        'samples_count': lambda system: Sample.objects.filter(equipment__system=system).count(),
+    }
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in System._meta.fields]
-        return Response({'fields': fields})
 
-    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
-    def delete_impact(self, request):
-        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
-        impact = []
-        for sys_obj in System.objects.filter(id__in=ids):
-            equipments_count = sys_obj.equipment_set.count()
-            tasks_count = Task.objects.filter(equipment__system=sys_obj).count()
-            correctives_count = CorrectiveTask.objects.filter(equipment__system=sys_obj).count()
-            samples_count = Sample.objects.filter(equipment__system=sys_obj).count()
-            impact.append({
-                'id': sys_obj.id,
-                'tag': sys_obj.tag,
-                'name': sys_obj.name,
-                'equipments_count': equipments_count,
-                'tasks_count': tasks_count,
-                'correctives_count': correctives_count,
-                'samples_count': samples_count,
-                'total_impact': equipments_count + tasks_count + correctives_count + samples_count
-            })
-        return Response({'impact': impact})
-
-class EquipmentViewSet(viewsets.ModelViewSet):
-    # Consulta base que obtiene todos los registros del modelo Equipment
+class EquipmentViewSet(DeleteImpactMixin, BaseViewSet):
     queryset = Equipment.objects.all()
-    # Define el serializador encargado de convertir objetos Equipment a JSON (y viceversa)
     serializer_class = EquipmentSerializer
-    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'tag': ['exact', 'in', 'icontains', 'isnull'],
@@ -197,41 +203,21 @@ class EquipmentViewSet(viewsets.ModelViewSet):
         'system': ['exact', 'in', 'isnull'],
         'area': ['exact', 'in', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'description', 'system', 'area']
+    impact_counts = {
+        'tasks_count': lambda eq: eq.task_set.count(),
+        'correctives_count': lambda eq: eq.correctivetask_set.count(),
+        'samples_count': lambda eq: eq.samples.count(),
+    }
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Equipment._meta.fields]
-        return Response({'fields': fields})
 
-    @action(detail=False, methods=['post', 'get'], url_path='delete-impact')
-    def delete_impact(self, request):
-        ids = request.data.get('ids', []) if request.method == 'POST' else [int(x) for x in request.query_params.get('ids', '').split(',') if x.strip().isdigit()]
-        impact = []
-        for eq in Equipment.objects.filter(id__in=ids):
-            tasks_count = eq.task_set.count()
-            correctives_count = eq.correctivetask_set.count()
-            samples_count = eq.samples.count()
-            impact.append({
-                'id': eq.id,
-                'tag': eq.tag,
-                'name': eq.name,
-                'tasks_count': tasks_count,
-                'correctives_count': correctives_count,
-                'samples_count': samples_count,
-                'total_impact': tasks_count + correctives_count + samples_count
-            })
-        return Response({'impact': impact})
+# ---------------------------------------------------------------------------
+# Tareas
+# ---------------------------------------------------------------------------
 
-class TaskViewSet(viewsets.ModelViewSet):
+class TaskViewSet(BaseViewSet):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
-    
-    # Habilitar filtros y ordenamiento
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    
-    # Definir campos de filtrado
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'task_catalog': ['exact', 'in', 'isnull'],
@@ -245,44 +231,13 @@ class TaskViewSet(viewsets.ModelViewSet):
         'turn': ['exact', 'in', 'icontains', 'isnull'],
         'equipment': ['exact', 'in', 'isnull']
     }
-    
-    # Definir campos de ordenamiento
     ordering_fields = ['id', 'task_catalog__name', 'duration', 'workers', 'frequency', 'start_date', 'description', 'procedure', 'turn', 'equipment']
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Task._meta.fields]
-        return Response({'fields': fields})
 
-class TaskPViewSet(viewsets.ModelViewSet):
+class TaskPViewSet(BaseViewSet):
     queryset = TaskP.objects.all()
     serializer_class = TaskPSerializer
-    
-    def get_queryset(self):
-        # Excluir tareas huérfanas que no tienen ni plantilla programada ni correctiva
-        return super().get_queryset().exclude(
-            task__isnull=True,
-            corrective_task__isnull=True
-        )
-    
-    # Habilitar filtros y ordenamiento
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    
-    # Definir campos de filtrado
-    #filterset_fields = {
-    #    'id': ['exact', 'in'],
-    #    'task': ['exact', 'in'],
-    #    'year': ['exact', 'in', 'gte', 'lte'],
-    #    'week': ['exact', 'in', 'gte', 'lte'],
-    #    'day': ['exact', 'in', 'icontains'],
-    #    'date': ['exact', 'in', 'gte', 'lte'],
-    #    'usuario': ['exact', 'in'],
-    #    'estado': ['exact', 'in'],
-    #    'priority': ['exact', 'in', 'icontains'],
-    #    'rescheduled': ['exact', 'in']
-    #}
-
-    # IMPORTANTE: Cambia 'exact' por una lista que incluya 'in' para los campos clave
+    # Para filtrar con varios valores se incluye el lookup 'in' en los campos clave.
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'task': ['exact', 'in', 'isnull'],
@@ -290,51 +245,27 @@ class TaskPViewSet(viewsets.ModelViewSet):
         'week': ['exact', 'in', 'gte', 'lte', 'isnull'],
         'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
         'estado': ['exact', 'in', 'isnull'],
-        'group': ['exact', 'in', 'isnull'], 
+        'group': ['exact', 'in', 'isnull'],
         'rescheduled': ['exact', 'isnull']
     }
-    
-    # Definir campos de ordenamiento
     ordering_fields = ['id', 'task', 'year', 'week', 'day', 'date', 'group', 'estado', 'priority', 'rescheduled']
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in TaskP._meta.fields]
-        return Response({'fields': fields})
+    def get_queryset(self):
+        # Excluir tareas huérfanas que no tienen ni plantilla programada ni correctiva
+        return super().get_queryset().exclude(
+            task__isnull=True,
+            corrective_task__isnull=True
+        )
 
-# --- VISTAS CORREGIDAS PARA USUARIOS Y GRUPOS ---
-
-class UserViewSet(viewsets.ModelViewSet):
-    """
-    API endpoint para el modelo personalizado User (works4cdp_user).
-    """
-    queryset = User.objects.all()
-    serializer_class = UserSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = {
-        'id': ['exact', 'in', 'isnull'],
-        'nombre': ['exact', 'in', 'icontains', 'isnull'],
-        'apellido': ['exact', 'in', 'icontains', 'isnull'],
-        'email': ['exact', 'in', 'icontains', 'isnull'],
-        'rol': ['exact', 'in', 'icontains', 'isnull'],
-        'group': ['exact', 'in', 'isnull']
-    }
-    ordering_fields = ['id', 'nombre', 'apellido', 'group']
-
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in User._meta.fields]
-        return Response({'fields': fields})
 
 class CorrectiveTaskFilter(django_filters.FilterSet):
-    # Definimos filtros personalizados para mapear los parámetros obsoletos 'year', 'week' y 'date' a 'creation_date'
+    # Filtros que mapean los parámetros obsoletos 'year', 'week' y 'date' a 'creation_date'
     year = django_filters.NumberFilter(field_name='creation_date', lookup_expr='year')
     week = django_filters.NumberFilter(field_name='creation_date', lookup_expr='week')
     date = django_filters.DateFilter(field_name='creation_date')
 
     class Meta:
         model = CorrectiveTask
-        # Campos de base para el filtro
         fields = {
             'id': ['exact', 'in', 'isnull'],
             'name': ['exact', 'in', 'icontains', 'isnull'],
@@ -349,56 +280,78 @@ class CorrectiveTaskFilter(django_filters.FilterSet):
             'turno': ['exact', 'in', 'icontains', 'isnull'],
         }
 
-class CorrectiveTaskViewSet(viewsets.ModelViewSet):
+
+class CorrectiveTaskViewSet(BaseViewSet):
     queryset = CorrectiveTask.objects.all()
     serializer_class = CorrectiveTaskSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Usamos la clase de filtro personalizada en lugar de filterset_fields
     filterset_class = CorrectiveTaskFilter
-    # Se actualizó 'date' a 'creation_date' ya que el campo original se llama 'creation_date' en el modelo
     ordering_fields = ['id', 'equipment', 'creation_date']
 
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in CorrectiveTask._meta.fields]
-        return Response({'fields': fields})
+# ---------------------------------------------------------------------------
+# Personal y calendario
+# ---------------------------------------------------------------------------
+
+class UserViewSet(BaseViewSet):
+    """API endpoint para el modelo personalizado User (works4cdp_user)."""
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+    filterset_fields = {
+        'id': ['exact', 'in', 'isnull'],
+        'nombre': ['exact', 'in', 'icontains', 'isnull'],
+        'apellido': ['exact', 'in', 'icontains', 'isnull'],
+        'email': ['exact', 'in', 'icontains', 'isnull'],
+        'rol': ['exact', 'in', 'icontains', 'isnull'],
+        'group': ['exact', 'in', 'isnull']
+    }
+    ordering_fields = ['id', 'nombre', 'apellido', 'group']
 
 
-class SampleViewSet(viewsets.ModelViewSet):
-    # Consulta base que obtiene todos los registros del modelo Sample
+class UserPViewSet(BaseViewSet):
+    """API endpoint para el modelo de Grupos (UserP)."""
+    queryset = UserP.objects.all()
+    serializer_class = UserPSerializer
+    filterset_fields = {
+        'id': ['exact', 'in', 'isnull'],
+        'name': ['exact', 'in', 'icontains', 'isnull']
+    }
+    ordering_fields = ['id', 'name']
+
+
+class CalendarViewSet(BaseViewSet):
+    queryset = Calendar.objects.all()
+    serializer_class = CalendarSerializer
+    filterset_fields = {
+        'id': ['exact', 'in', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'year': ['exact', 'in', 'isnull'],
+        'week': ['exact', 'in', 'isnull'],
+        'group': ['exact', 'in', 'isnull'],
+        'turn': ['exact', 'in', 'icontains', 'isnull']
+    }
+    ordering_fields = ['id', 'date', 'year', 'week']
+
+
+# ---------------------------------------------------------------------------
+# Muestras y ensayos
+# ---------------------------------------------------------------------------
+
+class SampleViewSet(BaseViewSet):
     queryset = Sample.objects.all()
-    # Define el serializador encargado de convertir objetos Sample a JSON (y viceversa)
     serializer_class = SampleSerializer
-    # Configura los backends de filtrado: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'tag': ['exact', 'in', 'icontains', 'isnull'],
         'name': ['exact', 'in', 'icontains', 'isnull'],
         'equipment': ['exact', 'in', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'tag', 'name', 'equipment']
 
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Sample._meta.fields]
-        return Response({'fields': fields})
-
-
-class AssayViewSet(viewsets.ModelViewSet):
-    # Optimización: Usamos select_related para traer datos de Sample y Equipment en una sola consulta
+class AssayViewSet(BaseViewSet):
+    # select_related evita una consulta extra por ensayo al serializar `sample`.
     queryset = Assay.objects.select_related('sample', 'sample__equipment').all()
-    # Define el serializador encargado de convertir objetos Assay a JSON (y viceversa)
     serializer_class = AssaySerializer
-    
-    # Configuración de backends de filtros: DjangoFilterBackend para igualdades/IN y OrderingFilter para ordenar
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    # Especifica explícitamente qué campos pueden ser usados como filtros
-    # sample__equipment permite filtrar ensayos según el equipo de su muestra
     filterset_fields = {
         'id': ['exact', 'in', 'isnull'],
         'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
@@ -407,124 +360,69 @@ class AssayViewSet(viewsets.ModelViewSet):
         'sample__equipment': ['exact', 'in', 'isnull'],
         'user': ['exact', 'in', 'isnull']
     }
-    # Especifica explícitamente qué campos pueden usarse para ordenar los resultados
     ordering_fields = ['id', 'date', 'time', 'sample', 'user']
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Assay._meta.fields]
-        return Response({'fields': fields})
-
-    # Endpoint POST /api/assays/sync-equipment/ para sincronizar con el Courier a demanda desde la UI
     @action(detail=False, methods=['post'], url_path='sync-equipment')
     def sync_equipment(self, request):
-        # Extraemos el ID del equipo analizador recibido en el payload JSON.
+        """POST /api/assays/sync-equipment/ — sincroniza con el Courier a demanda desde la UI."""
         equipment_id = request.data.get('equipment_id')
-        # Extraemos la fecha opcional en formato YYYY-MM-DD.
-        target_date_str = request.data.get('date')
-
-        # Validamos que se haya enviado el parámetro obligatorio equipment_id.
         if not equipment_id:
-            return Response(
-                {"status": "error", "error": "El parámetro equipment_id es requerido."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return error_response("El parámetro equipment_id es requerido.", status.HTTP_400_BAD_REQUEST)
 
-        # Parseamos la fecha si fue provista por el cliente.
-        target_date = None
-        if target_date_str:
-            try:
-                from datetime import datetime
-                target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
-            except ValueError:
-                return Response(
-                    {"status": "error", "error": f"Formato de fecha inválido: {target_date_str}. Use YYYY-MM-DD."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        target_date, date_error = parse_iso_date(request.data.get('date'))
+        if date_error:
+            return error_response(date_error, status.HTTP_400_BAD_REQUEST)
 
         try:
-            # Importamos el servicio de sincronización de Couriers.
+            # Import local: evita cargar `requests` y el servicio al arrancar Django.
             from .services.clb_syncer import AssaySyncService
-            # Ejecutamos la sincronización con conciliación delta por clave natural.
             result = AssaySyncService.sync_equipment(equipment_id=equipment_id, target_date=target_date)
-            # Retornamos respuesta con el estado y la cantidad de registros insertados.
             return Response(result, status=status.HTTP_200_OK)
         except Exception as exc:
-            # Capturamos cualquier excepción inesperada para responder con código 500.
-            return Response(
-                {"status": "error", "error": f"Error al sincronizar con el analizador: {str(exc)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            # Se registra el traceback completo; al cliente solo se le informa el mensaje.
+            logger.exception("Error al sincronizar el equipo %s con el Courier", equipment_id)
+            return error_response(
+                f"Error al sincronizar con el analizador: {exc}",
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-    # Endpoint GET /api/assays/next-chemical-id/ para calcular el siguiente correlativo secuencial por planta
     @action(detail=False, methods=['get'], url_path='next-chemical-id')
     def next_chemical_id(self, request):
         """
-        Calcula y retorna el siguiente chemical_id correlativo disponible para la planta
-        asociada al equipo analizador especificado.
-        
-        Regla de negocio:
-        - Concentradora 1 (Courier Flotacion C1 [id=1] y Courier Molibdeno C1 [id=2]):
-          Comparten una misma secuencia correlativa continua (serie ~26,000).
-        - Concentradora 2 (Courier Flotacion C2 [id=5] y Courier Molibdeno C2 [id=6]):
-          Comparten una misma secuencia correlativa continua (serie ~10,000).
+        GET /api/assays/next-chemical-id/?equipment_id=<id> | ?plant_id=<id>
+        Retorna el siguiente chemical_id correlativo disponible para la planta del equipo.
+
+        Regla de negocio (implementada en AssaySyncService):
+        - Concentradora 1 (Courier 1 y 2) comparten una secuencia (serie ~26,000).
+        - Concentradora 2 (Courier 5 y 6) comparten otra (serie ~10,000).
         """
+        from .services.clb_syncer import AssaySyncService
+
         equipment_id = request.query_params.get('equipment_id')
         plant_id = request.query_params.get('plant_id')
-
-        target_plant = None
         target_equipment = None
 
         # 1. Identificar la planta a partir del equipment_id o plant_id
         if equipment_id:
             try:
                 target_equipment = Equipment.objects.select_related('area__plant').get(id=int(equipment_id))
-                if target_equipment.area and target_equipment.area.plant:
-                    target_plant = target_equipment.area.plant
             except (Equipment.DoesNotExist, ValueError):
-                return Response(
-                    {"status": "error", "error": f"Equipo con ID '{equipment_id}' no encontrado."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return error_response(f"Equipo con ID '{equipment_id}' no encontrado.", status.HTTP_404_NOT_FOUND)
+            target_plant = target_equipment.area.plant if target_equipment.area else None
         elif plant_id:
             try:
                 target_plant = Plant.objects.get(id=int(plant_id))
             except (Plant.DoesNotExist, ValueError):
-                return Response(
-                    {"status": "error", "error": f"Planta con ID '{plant_id}' no encontrada."},
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return error_response(f"Planta con ID '{plant_id}' no encontrada.", status.HTTP_404_NOT_FOUND)
         else:
-            return Response(
-                {"status": "error", "error": "Debe especificar el parámetro 'equipment_id' o 'plant_id'."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return error_response("Debe especificar el parámetro 'equipment_id' o 'plant_id'.", status.HTTP_400_BAD_REQUEST)
 
         if not target_plant:
-            return Response(
-                {"status": "error", "error": "No se pudo determinar la planta para el equipo especificado."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return error_response("No se pudo determinar la planta para el equipo especificado.", status.HTTP_400_BAD_REQUEST)
 
-        # 2. Consultar el valor máximo de chemical_id registrado en toda la planta
-        # Se filtra chemical_id < 100000 para ignorar valores históricos de timestamps Unix (ej. 1741018740)
-        max_record = Assay.objects.filter(
-            sample__equipment__area__plant=target_plant,
-            chemical_id__isnull=False,
-            chemical_id__lt=100000
-        ).aggregate(max_id=Max('chemical_id'))
-
-        max_chemical_id = max_record.get('max_id')
-
-        # 3. Si no existe ningún chemical_id previo en la planta, determinar base según la planta
-        if max_chemical_id is None:
-            # Concentradora 1 usa base 26000, Concentradora 2 usa base 10000
-            if "1" in str(target_plant.name) or "1" in str(target_plant.tag):
-                next_id = 26001
-            else:
-                next_id = 10001
-        else:
-            next_id = max_chemical_id + 1
+        # 2. Máximo registrado en la planta y 3. siguiente correlativo (con la base por planta si no hay datos)
+        max_chemical_id = AssaySyncService.get_max_chemical_id(plant=target_plant)
+        next_id = AssaySyncService.get_next_chemical_id_for_plant(plant=target_plant)
 
         return Response({
             "status": "ok",
@@ -536,47 +434,41 @@ class AssayViewSet(viewsets.ModelViewSet):
             "next_chemical_id": next_id
         }, status=status.HTTP_200_OK)
 
-    # Endpoint POST /api/assays/autofill-chemical-ids/ para autollenar o reasignar correlativos en BD
     @action(detail=False, methods=['post'], url_path='autofill-chemical-ids')
     def autofill_chemical_ids(self, request):
         """
-        Asigna o recalcula códigos chemical_id correlativos para un equipo y fecha dados directamente en la base de datos.
+        POST /api/assays/autofill-chemical-ids/
+        Asigna o recalcula códigos chemical_id correlativos para un equipo (y fecha opcional).
+        Con `reassign=true` también reasigna los ensayos que ya tenían código.
         """
+        from .services.clb_syncer import AssaySyncService, assay_sort_key
+
         equipment_id = request.data.get('equipment_id')
-        date_str = request.data.get('date')
         reassign = bool(request.data.get('reassign', False))
 
         if not equipment_id:
-            return Response(
-                {"status": "error", "error": "El parámetro equipment_id es requerido."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return error_response("El parámetro equipment_id es requerido.", status.HTTP_400_BAD_REQUEST)
+        try:
+            equipment_id = int(equipment_id)  # antes un valor no numérico producía error 500
+        except (TypeError, ValueError):
+            return error_response(f"equipment_id inválido: {equipment_id}.", status.HTTP_400_BAD_REQUEST)
 
-        target_date = None
-        if date_str:
-            try:
-                from datetime import datetime
-                target_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-            except ValueError:
-                return Response(
-                    {"status": "error", "error": f"Formato de fecha inválido: {date_str}. Use YYYY-MM-DD."},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        target_date, date_error = parse_iso_date(request.data.get('date'))
+        if date_error:
+            return error_response(date_error, status.HTTP_400_BAD_REQUEST)
 
-        from .services.clb_syncer import AssaySyncService, natural_sort_key
-        equipment = Equipment.objects.select_related('area__plant').filter(id=int(equipment_id)).first()
+        equipment = Equipment.objects.select_related('area__plant').filter(id=equipment_id).first()
         if not equipment:
-            return Response({"status": "error", "error": "Equipo no encontrado."}, status=status.HTTP_404_NOT_FOUND)
+            return error_response("Equipo no encontrado.", status.HTTP_404_NOT_FOUND)
         plant = equipment.area.plant if equipment.area else None
 
         query = Assay.objects.filter(sample__equipment_id=equipment_id)
         if target_date:
             query = query.filter(date=target_date)
-
         if not reassign:
             query = query.filter(chemical_id__isnull=True)
 
-        assays_to_update = list(query.select_related('sample'))
+        assays_to_update = sorted(query.select_related('sample'), key=assay_sort_key)
         if not assays_to_update:
             return Response({
                 "status": "ok",
@@ -584,22 +476,14 @@ class AssayViewSet(viewsets.ModelViewSet):
                 "updated": 0
             })
 
-        assays_to_update.sort(
-            key=lambda a: (
-                natural_sort_key(a.sample.tag if a.sample else ""),
-                a.instance or 0,
-                a.time or time(0, 0, 0)
-            )
-        )
-
-        next_id = AssaySyncService.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
-        current_seq = next_id
-        for a in assays_to_update:
-            a.chemical_id = current_seq
-            current_seq += 1
-
-        from django.db import transaction
+        # El cálculo del siguiente ID y la escritura van en la misma transacción para acortar la ventana
+        # de carrera entre dos peticiones simultáneas.
         with transaction.atomic():
+            next_id = AssaySyncService.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
+            current_seq = next_id
+            for assay in assays_to_update:
+                assay.chemical_id = current_seq
+                current_seq += 1
             Assay.objects.bulk_update(assays_to_update, ['chemical_id'])
 
         return Response({
@@ -610,51 +494,30 @@ class AssayViewSet(viewsets.ModelViewSet):
             "next_chemical_id": current_seq
         })
 
-class CalendarViewSet(viewsets.ModelViewSet):
-    queryset = Calendar.objects.all()
-    serializer_class = CalendarSerializer
-    
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = {
-        'id': ['exact', 'in', 'isnull'],
-        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
-        'year': ['exact', 'in', 'isnull'],
-        'week': ['exact', 'in', 'isnull'],
-        'group': ['exact', 'in', 'isnull'],
-        'turn': ['exact', 'in', 'icontains', 'isnull']
-    }
-    ordering_fields = ['id', 'date', 'year', 'week']
 
-    @action(detail=False, methods=['get'], url_path='schema')
-    def schema(self, request):
-        fields = [field.name for field in Calendar._meta.fields]
-        return Response({'fields': fields})
-
-class UserPViewSet(viewsets.ModelViewSet):  # Permite CRUD completo
-    """
-    API endpoint para el modelo de Grupos (UserP).
-    Se ha corregido para eliminar la duplicación y usar los nombres de campo correctos.
-    """
-    queryset = UserP.objects.all()
-    serializer_class = UserPSerializer
-    filter_backends = [DjangoFilterBackend, filters.OrderingFilter]
-    filterset_fields = {
-        'id': ['exact', 'in', 'isnull'],
-        'name': ['exact', 'in', 'icontains', 'isnull']
-    }
-    ordering_fields = ['id', 'name']
+# ---------------------------------------------------------------------------
+# Vista semanal
+# ---------------------------------------------------------------------------
 
 class WeeklyTaskView(APIView):
+    """GET: tareas y calendario de una semana. POST: actualiza el estado de varias tareas (ExcelGrid)."""
+
     def get(self, request):
         week = request.query_params.get('week')
-        year = request.query_params.get('year', 2026)
+        # El año por defecto era 2026 fijo en el código; ahora es el año en curso.
+        year = request.query_params.get('year', timezone.localdate().year)
 
         if not week or not year:
-             return Response({"error": "Faltan parámetros week y year"}, status=400)
+            return Response({"error": "Faltan parámetros week y year"}, status=400)
+        try:
+            # Antes un valor no numérico llegaba al ORM y terminaba en error 500.
+            week, year = int(week), int(year)
+        except (TypeError, ValueError):
+            return Response({"error": "Los parámetros week y year deben ser enteros"}, status=400)
 
-        # Construcción de la consulta avanzada utilizando el ORM de Django, excluyendo huérfanas (evita celdas vacías en frontend)
+        # Excluye huérfanas (sin plantilla ni correctiva) para evitar celdas vacías en el frontend.
         tareas = TaskP.objects.filter(
-            week=week, 
+            week=week,
             year=year
         ).exclude(
             task__isnull=True,
@@ -666,7 +529,7 @@ class WeeklyTaskView(APIView):
                 output_field=BooleanField()
             )
         ).values(
-            'id', 
+            'id',
             'date',
             'estado_id',
             'is_corrective',
@@ -685,22 +548,21 @@ class WeeklyTaskView(APIView):
             estado_nombre=F('estado__estado_nombre')
         ).annotate(
             cuadrilla_grupo=StringAgg(
-                'taskgroupassignment__calendar__group__name', 
-                delimiter=' / ', 
+                'taskgroupassignment__calendar__group__name',
+                delimiter=' / ',
                 distinct=True
             ),
             usuarios_asignados=StringAgg(
-                'taskgroupassignment__calendar__group__user__nombre', 
-                #), 
-                delimiter=', ', 
+                'taskgroupassignment__calendar__group__user__nombre',
+                delimiter=', ',
                 distinct=True
             )
         ).order_by('date', 'turno')
 
-        # 2. Ejecutamos la consulta SQL nativa del Calendario para las Estadísticas de Personal
+        # Consulta SQL nativa del calendario para las estadísticas de personal (parámetros enlazados con %s).
         with connection.cursor() as cursor:
             cursor.execute("""
-                SELECT 
+                SELECT
                     c.id AS calendar_id,
                     c.date AS fecha,
                     c.day AS dia_semana,
@@ -711,13 +573,13 @@ class WeeklyTaskView(APIView):
                     u.apellido AS usuario_apellido,
                     u.rol AS usuario_rol,
                     tga.taskp_id AS tarea_asignada_id
-                FROM 
+                FROM
                     public.works4cdp_calendar c
-                LEFT JOIN 
+                LEFT JOIN
                     public.works4cdp_taskgroupassignment tga ON c.id = tga.calendar_id
-                LEFT JOIN 
+                LEFT JOIN
                     public.works4cdp_userp g ON c.group_id = g.id
-                LEFT JOIN 
+                LEFT JOIN
                     public.works4cdp_user u ON u.group_id = g.id OR u.id = c.id_user
                 WHERE c.week = %s AND c.year = %s
                 ORDER BY c.date ASC, g.name ASC;
@@ -728,8 +590,16 @@ class WeeklyTaskView(APIView):
         return Response({"tasks": list(tareas), "calendar": calendario})
 
     def post(self, request):
-        # Endpoint para guardar cambios masivos desde ExcelGrid
+        """Guarda cambios masivos de estado: {"updates": [{"id": 1, "estado_id": 2}, ...]}."""
         updates = request.data.get('updates', [])
-        for item in updates:
-            TaskP.objects.filter(id=item['id']).update(estado_id=item['estado_id'])
+        if not isinstance(updates, list):
+            return Response({"error": "'updates' debe ser una lista"}, status=400)
+        # Se valida todo antes de escribir para no dejar la actualización a medias (antes un item sin
+        # 'id' o 'estado_id' lanzaba KeyError tras haber guardado los anteriores).
+        if any(not isinstance(i, dict) or 'id' not in i or 'estado_id' not in i for i in updates):
+            return Response({"error": "Cada elemento requiere 'id' y 'estado_id'"}, status=400)
+
+        with transaction.atomic():
+            for item in updates:
+                TaskP.objects.filter(id=item['id']).update(estado_id=item['estado_id'])
         return Response({"status": "success"})

@@ -38,6 +38,19 @@ def natural_sort_key(s: Any) -> list:
     """Clave para ordenamiento alfanumérico natural (ej. C_01_S02 antes de C_01_S10)."""
     return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s or ''))]
 
+
+def assay_sort_key(assay: Assay) -> tuple:
+    """
+    Clave de orden para asignar chemical_id correlativos: tag de muestra (orden natural),
+    luego instancia y por último hora. Centraliza el criterio que antes se copiaba en
+    sync_equipment (x2) y en AssayViewSet.autofill_chemical_ids.
+    """
+    return (
+        natural_sort_key(assay.sample.tag if assay.sample else ""),
+        assay.instance or 0,
+        assay.time or time(0, 0, 0),
+    )
+
 # Mapa estático de IP por ID de equipo analizador Courier (Courier 1, 2, 5, 6).
 EQUIPMENT_IP_MAP: Dict[int, str] = {
     5: "172.18.16.21",  # Courier 5 (Red Planta 172.18.16.x)
@@ -256,13 +269,19 @@ class AssaySyncService:
     en la tabla works4cdp_assay protegiendo datos manuales y la integridad histórica.
     """
 
+    @staticmethod
+    def _is_concentradora_1(plant: Optional[Plant], equipment_id: Optional[int]) -> bool:
+        """Indica si la secuencia corresponde a Concentradora 1 (base 26001) o a la 2 (base 10001)."""
+        if plant:
+            return "1" in str(plant.name) or "1" in str(getattr(plant, "tag", ""))
+        if equipment_id:
+            return int(equipment_id) in (1, 2)
+        return False
+
     @classmethod
-    def get_next_chemical_id_for_plant(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> int:
+    def get_max_chemical_id(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> Optional[int]:
         """
-        Calcula el siguiente chemical_id correlativo disponible para la planta.
-        Regla de negocio:
-        - Concentradora 1 (Courier 1 y 2): serie ~26,000 (base inicial 26001).
-        - Concentradora 2 (Courier 5 y 6): serie ~10,000 (base inicial 10001).
+        Devuelve el mayor chemical_id registrado para la planta (o para el par de Couriers del equipo).
         Se filtra chemical_id < 100000 para ignorar marcas de tiempo Unix históricas.
         """
         query = Assay.objects.filter(chemical_id__isnull=False, chemical_id__lt=100000)
@@ -273,15 +292,19 @@ class AssaySyncService:
                 query = query.filter(sample__equipment_id__in=[1, 2])
             else:
                 query = query.filter(sample__equipment_id__in=[5, 6])
+        return query.aggregate(max_val=Max("chemical_id"))["max_val"]
 
-        max_id = query.aggregate(max_val=Max('chemical_id')).get('max_val')
+    @classmethod
+    def get_next_chemical_id_for_plant(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> int:
+        """
+        Calcula el siguiente chemical_id correlativo disponible para la planta.
+        Regla de negocio:
+        - Concentradora 1 (Courier 1 y 2): serie ~26,000 (base inicial 26001).
+        - Concentradora 2 (Courier 5 y 6): serie ~10,000 (base inicial 10001).
+        """
+        max_id = cls.get_max_chemical_id(plant=plant, equipment_id=equipment_id)
         if max_id is None:
-            is_c1 = False
-            if plant:
-                is_c1 = "1" in str(plant.name) or "1" in str(getattr(plant, 'tag', ''))
-            elif equipment_id:
-                is_c1 = int(equipment_id) in (1, 2)
-            return 26001 if is_c1 else 10001
+            return 26001 if cls._is_concentradora_1(plant, equipment_id) else 10001
         return max_id + 1
 
     @classmethod
@@ -422,13 +445,7 @@ class AssaySyncService:
             # Si hay registros legítimamente nuevos, asignamos chemical_id correlativo y los insertamos en bloque.
             if new_assays:
                 # Ordenamos los nuevos ensayos según el orden natural del tag de muestra (SN), instancia y hora
-                new_assays.sort(
-                    key=lambda a: (
-                        natural_sort_key(a.sample.tag if a.sample else ""),
-                        a.instance or 0,
-                        a.time or time(0, 0, 0)
-                    )
-                )
+                new_assays.sort(key=assay_sort_key)
                 current_chem_id = cls.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
                 for a in new_assays:
                     a.chemical_id = current_chem_id
@@ -449,13 +466,7 @@ class AssaySyncService:
                 ).select_related('sample')
             )
             if unassigned_assays:
-                unassigned_assays.sort(
-                    key=lambda a: (
-                        natural_sort_key(a.sample.tag if a.sample else ""),
-                        a.instance or 0,
-                        a.time or time(0, 0, 0)
-                    )
-                )
+                unassigned_assays.sort(key=assay_sort_key)
                 if current_chem_id is None:
                     current_chem_id = cls.get_next_chemical_id_for_plant(plant=plant, equipment_id=equipment_id)
                 for a in unassigned_assays:

@@ -204,11 +204,13 @@ const columnsConfig = computed(() => {
     // La clave '23' corresponde al índice de 'sample' (Muestra) en colKeys
     // La clave '31' corresponde al índice de 'user' (Usuario) en colKeys
     return {
-        // Columnas calculadas: Peso Prod. = Peso Total − Tara (solo lectura) y
-        // % Sol = Peso Seco / (Peso Total − Tara) × 100 (se recalcula; admite corrección manual).
+        // Columnas calculadas que admiten corrección manual: Peso Prod. = Peso Total − Tara y
+        // % Sol = Peso Seco / Peso Prod. × 100.
         ...assayWeightFormulas((key) => colKeys.indexOf(key)),
+        // chemical_id: incremento +1 hacia abajo y aviso de códigos fuera de la serie (dígito de más o de menos).
         22: {
-            autoIncrementDown: true
+            autoIncrementDown: true,
+            seriesCheck: true
         },
         23: {
             type: 'select',

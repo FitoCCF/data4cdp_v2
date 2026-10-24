@@ -217,3 +217,22 @@ filtro de columna debe actuar SOLO sobre los registros de la página; el resulta
   de respaldo usa Peso Prod. como peso neto.
 - Ensayos: orden por defecto Fecha ↓ (más reciente primero), Muestra ↑, Hora ↑.
 - Pruebas: backend 103 OK, frontend 164 OK, build OK.
+
+## 2026-10-24 — Código químico (chemical_id) de Courier moly C2 saltó a 53100
+
+- Causa: el siguiente código era el mayor de TODA la historia de la planta + 1. Dos ensayos de 2023 de
+  Courier 5 (id 12637, 2023-06-07, C_01_S15 = 53099; id 10171, 2023-06-14, C_01_S01 = 53098) tenían un
+  dígito de más (~5309); se guardaron desde la grilla la noche del 24/10 hacia las 00:07. Hoy el Courier
+  moly C2 generó 53100-53102 en vez de seguir al cobre del 21 (10746-10754).
+- Datos (autorizado por el usuario; respaldo CSV en el scratchpad de la sesión):
+  - 12637 y 10171: chemical_id en blanco (no se conoce el valor correcto).
+  - 17312, 17313, 17314 (2026-10-24, C_02_S03/S04/S05): 53100-53102 -> 10755-10757.
+- `AssaySyncService.get_max_chemical_id`: ahora toma el mayor código solo de los ensayos de los últimos
+  90 días (desde el ensayo más reciente con código), así un código mal tipeado en un ensayo antiguo ya no
+  rompe la serie. Verificado con datos reales: siguiente C1 = 26870, C2 = 10758.
+- ExcelGrid: nueva opción `columnsConfig[col].seriesCheck` (utils/gridValidation.js). Marca en naranja los
+  códigos que son más del doble o menos de la mitad de la mediana de los cargados (dígito de más o de
+  menos) y avisa en el diálogo de guardado. No bloquea. Activada en chemical_id de Ensayos y Muestreo.
+- Pendiente: el autollenado de códigos SIN fecha (autofill-chemical-ids) asignaría códigos nuevos a los
+  ensayos 12637 y 10171, que ahora no tienen código.
+- Pruebas: backend 104 OK, frontend 168 OK, build OK.

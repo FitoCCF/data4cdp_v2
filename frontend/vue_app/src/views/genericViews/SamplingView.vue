@@ -309,8 +309,10 @@ const columnsConfig = computed(() => {
       headerClass: 'hidden-column'
     },
     // Columna index 1 es 'CÓDIGO' (chemical_id) - Habilita la funcionalidad estilo Excel de sumar +1 hacia abajo
+    // y el aviso de códigos fuera de la serie (dígito de más o de menos).
     1: {
-      autoIncrementDown: true
+      autoIncrementDown: true,
+      seriesCheck: true
     },
     // % SÓLIDOS se calcula con la fórmula compartida de ensayos (utils/gridFormulas.js) y admite
     // corrección manual; reemplaza al antiguo rowCalculator propio de esta vista.

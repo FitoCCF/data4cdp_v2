@@ -144,6 +144,13 @@ class AssaySyncServiceTests(TestCase):
         self.sync({'c_01_s2': [courier_row()]})
         self.assertEqual(Assay.objects.get(date=self.fecha).chemical_id, 26501)
 
+    def test_un_codigo_mal_tipeado_en_un_ensayo_antiguo_no_rompe_la_serie(self):
+        # Caso real (2026-10-24): ensayos de 2023 con 53098/53099 hacían saltar la serie a 53100.
+        f.make_assay(self.s2, date=datetime.date(2023, 6, 14), chemical_id=53098)
+        f.make_assay(self.s2, date=datetime.date(2026, 1, 1), chemical_id=26500)
+        self.sync({'c_01_s2': [courier_row()]})
+        self.assertEqual(Assay.objects.get(date=self.fecha).chemical_id, 26501)
+
     def test_equipo_sin_ip_configurada(self):
         result = AssaySyncService.sync_equipment(999999, target_date=self.fecha)
         self.assertEqual(result['status'], 'error')

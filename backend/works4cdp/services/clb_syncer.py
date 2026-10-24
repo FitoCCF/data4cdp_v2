@@ -6,7 +6,7 @@ import logging
 # Import de utilidades del sistema operativo para leer variables de entorno.
 import os
 # Import de clases para manipulación y parseo de fechas y horas.
-from datetime import datetime, time, date
+from datetime import datetime, time, date, timedelta
 # Import de tipos genéricos para anotaciones estáticas de funciones.
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -278,11 +278,19 @@ class AssaySyncService:
             return int(equipment_id) in (1, 2)
         return False
 
+    # Ventana de ensayos recientes sobre la que se busca el último chemical_id de la serie.
+    CHEMICAL_ID_WINDOW_DAYS = 90
+
     @classmethod
     def get_max_chemical_id(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> Optional[int]:
         """
-        Devuelve el mayor chemical_id registrado para la planta (o para el par de Couriers del equipo).
+        Devuelve el mayor chemical_id de los ensayos RECIENTES de la planta (o del par de Couriers del equipo):
+        los de los últimos CHEMICAL_ID_WINDOW_DAYS días contados desde el ensayo más reciente con código.
         Se filtra chemical_id < 100000 para ignorar marcas de tiempo Unix históricas.
+
+        Antes se tomaba el mayor de toda la historia, y un código mal tipeado en un ensayo antiguo rompía la
+        serie: el 2026-10-24 dos ensayos de 2023 con 53098 y 53099 (en vez de ~5309) hicieron que Courier
+        moly C2 generara 53100-53102 en lugar de seguir en 10755.
         """
         query = Assay.objects.filter(chemical_id__isnull=False, chemical_id__lt=100000)
         if plant:
@@ -292,7 +300,12 @@ class AssaySyncService:
                 query = query.filter(sample__equipment_id__in=[1, 2])
             else:
                 query = query.filter(sample__equipment_id__in=[5, 6])
-        return query.aggregate(max_val=Max("chemical_id"))["max_val"]
+
+        latest_timestamp = query.order_by("-timestamp").values_list("timestamp", flat=True).first()
+        if latest_timestamp is None:
+            return None
+        recent = query.filter(timestamp__gte=latest_timestamp - timedelta(days=cls.CHEMICAL_ID_WINDOW_DAYS))
+        return recent.aggregate(max_val=Max("chemical_id"))["max_val"]
 
     @classmethod
     def get_next_chemical_id_for_plant(cls, plant: Optional[Plant] = None, equipment_id: Optional[int] = None) -> int:

@@ -180,10 +180,11 @@
                   'read-only': !isEditMode || item.row.isSummary || cIndex === 0 || isFormulaLocked(cIndex),
                   'formula-cell': isFormulaColumn(cIndex) && !item.row.isSummary,
                   'invalid-number': formulaInputs.has(cIndex) && !item.row.isSummary && isInvalidNumber(cell),
+                  'out-of-series': !item.row.isSummary && isCellOutOfSeries(cIndex, cell),
                   'summary-cell': item.row.isSummary,
                   'fill-target': isFillTarget(visualIndex, cIndex)
                 }"
-                :title="typeof cell === 'object' && cell !== null ? (cell.tooltip || '') : (columnsConfig[cIndex]?.formula?.description || '')"
+                :title="cellTitle(cell, cIndex)"
                 :data-col-index="cIndex"
                 :data-value="typeof cell === 'object' && cell !== null ? cell.value : cell"
                 :colspan="item.row.isSummary && typeof cell === 'object' && cell !== null ? (cell.colspan || 1) : 1"
@@ -329,6 +330,9 @@
       <div class="modal-content">
         <h3>¿Guardar cambios?</h3>
         <p>Se actualizarán los datos. Esta acción no se puede deshacer.</p>
+        <p v-if="outOfSeriesCount > 0" class="series-warning">
+          ⚠ Hay {{ outOfSeriesCount }} código(s) fuera de la serie (marcados en naranja). Revíselos antes de guardar.
+        </p>
         <div class="modal-actions">
           <button class="btn btn-sm btn-gray" @click="showSaveModal = false">Cancelar</button>
           <button class="btn btn-green" @click="executeSave">Sí, Guardar</button>
@@ -342,6 +346,7 @@
 import { ref, onMounted, onBeforeUnmount, reactive, watch, computed } from 'vue';
 import { cellPassesSpec, compareCellText, resolveFilterSelection, sortFilterValues } from '../utils/gridFilterLogic';
 import { applyFormulas, formulaInputColumns, isInvalidNumber, normalizeNumberText } from '../utils/gridFormulas';
+import { isOutOfSeries, seriesMedian } from '../utils/gridValidation';
 
 // --- PROPS ---
 const props = defineProps({
@@ -444,6 +449,34 @@ const isFormulaColumn = (colIndex) => Boolean(props.columnsConfig[colIndex]?.for
 const formulaInputs = computed(() => formulaInputColumns(props.columnsConfig));
 // Columna calculada que el usuario no puede editar (solo la fórmula escribe en ella).
 const isFormulaLocked = (colIndex) => isFormulaColumn(colIndex) && !props.columnsConfig[colIndex].formula.editable;
+
+// --- AVISO DE CÓDIGOS FUERA DE SERIE (columnsConfig[col].seriesCheck, ver utils/gridValidation.js) ---
+// Mediana de cada columna con seriesCheck sobre las filas cargadas (sin filas de resumen).
+const seriesMedians = computed(() => {
+  const medians = {};
+  Object.keys(props.columnsConfig).map(Number).forEach((col) => {
+    if (!props.columnsConfig[col]?.seriesCheck) return;
+    medians[col] = seriesMedian(localGrid.value.filter((row) => !row.isSummary).map((row) => row[col]));
+  });
+  return medians;
+});
+const isCellOutOfSeries = (colIndex, cell) => colIndex in seriesMedians.value && isOutOfSeries(cell, seriesMedians.value[colIndex]);
+// Cantidad de celdas fuera de serie, para avisar antes de guardar.
+const outOfSeriesCount = computed(() => {
+  let count = 0;
+  Object.keys(seriesMedians.value).map(Number).forEach((col) => {
+    localGrid.value.forEach((row) => { if (!row.isSummary && isCellOutOfSeries(col, row[col])) count++; });
+  });
+  return count;
+});
+// Ayuda de la celda: tooltip propio, aviso de serie o descripción de la fórmula.
+const cellTitle = (cell, colIndex) => {
+  if (typeof cell === 'object' && cell !== null) return cell.tooltip || '';
+  if (isCellOutOfSeries(colIndex, cell)) {
+    return `Código fuera de la serie (los códigos cargados rondan ${Math.round(seriesMedians.value[colIndex])}). Revise si sobra o falta un dígito.`;
+  }
+  return props.columnsConfig[colIndex]?.formula?.description || '';
+};
 
 // Punto único que se ejecuta tras cambiar una celda (escribir, pegar, desplegable, autoincremento):
 // recalcula las fórmulas que dependen de esa columna y luego el rowCalculator propio de la vista.
@@ -1379,6 +1412,9 @@ defineExpose({ clearFilters });
 .sort-indicator.sort-default { color: #9ca3af; }
 /* Celda de entrada de una fórmula con un valor que no es número (no se puede calcular) */
 .cell.invalid-number { background-color: #fee2e2; color: #991b1b; }
+/* Código correlativo fuera de la serie (aviso, no bloquea el guardado) */
+.cell.out-of-series { background-color: #ffedd5; color: #9a3412; font-weight: 600; }
+.series-warning { color: #9a3412; background: #ffedd5; padding: 6px 8px; border-radius: 4px; }
 /* Columnas calculadas por fórmula (p. ej. Peso Prod., % Sol) */
 .cell.formula-cell { background-color: #f0f9ff; color: #0c4a6e; font-style: italic; }
 .menu-status { padding: 6px 4px; color: #6b7280; font-size: 12px; }

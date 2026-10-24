@@ -33,12 +33,21 @@ class AssaySaveTests(TestCase):
         assay = f.make_assay(self.sample, tara=114.5, tweight=174.5, dweight=30.0)
         self.assertEqual(assay.pweight, 60.0)
         assay.tweight = 200.3
+        assay.pweight = None  # la grilla envía el valor recalculado; vacío = se calcula aquí
         assay.save()
         self.assertEqual(assay.pweight, 85.8)  # sin ruido binario (200.3 - 114.5 = 85.80000000000001)
 
     def test_peso_prod_se_conserva_si_falta_un_peso(self):
         assay = f.make_assay(self.sample, tara=10.0, pweight=7.0)
         self.assertEqual(assay.pweight, 7.0)
+
+    def test_peso_prod_manual_no_se_sobrescribe(self):
+        assay = f.make_assay(self.sample, tara=110.3, tweight=823.0, pweight=712.75)
+        self.assertEqual(assay.pweight, 712.75)
+
+    def test_psol_usa_peso_prod_manual(self):
+        assay = f.make_assay(self.sample, tara=10.0, tweight=110.0, dweight=30.0, pweight=60.0)
+        self.assertEqual(assay.pSol, 50.0)
 
     def test_psol_se_calcula_desde_los_pesos(self):
         # (dweight / (tweight - tara)) * 100 = 30 / (110 - 10) * 100

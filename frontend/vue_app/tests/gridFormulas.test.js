@@ -43,11 +43,32 @@ describe('applyFormulas con el diseño de Ensayos', () => {
     expect(r[1]).toBe('99')
   })
 
-  it('si falta un peso: Peso Prod. (solo lectura) se vacía y % Sol (editable) conserva el valor manual', () => {
+  it('si falta un peso: Peso Prod. y % Sol (editables) conservan el valor manual', () => {
     const r = row({ tara: '10', tweight: '', pweight: '7', pSol: '45' })
     applyFormulas(r, colKeys.indexOf('tweight'), config)
-    expect(r[5]).toBe('')
+    expect(r[5]).toBe('7')
     expect(r[1]).toBe('45')
+  })
+
+  it('corregir Peso Prod. a mano no se recalcula y % Sol usa ese valor', () => {
+    const r = row({ tara: '10', tweight: '110', dweight: '30', pweight: '60' })
+    expect(applyFormulas(r, colKeys.indexOf('pweight'), config)).toEqual([1])
+    expect(r[5]).toBe('60')
+    expect(r[1]).toBe(50)
+  })
+
+  it('% Sol se calcula después de Peso Prod. aunque su columna esté antes (orden por dependencias)', () => {
+    const r = row({ tara: '10', tweight: '110', dweight: '30', pweight: '60' })
+    applyFormulas(r, colKeys.indexOf('tweight'), config)
+    expect(r[5]).toBe(100)
+    expect(r[1]).toBe(30)
+  })
+
+  it('varias columnas editadas a la vez (pegado): un Peso Prod. pegado se respeta', () => {
+    const r = row({ tara: '10', tweight: '110', dweight: '30', pweight: '75' })
+    applyFormulas(r, ['tara', 'tweight', 'dweight', 'pweight'].map((k) => colKeys.indexOf(k)), config)
+    expect(r[5]).toBe('75')
+    expect(r[1]).toBe(40)
   })
 
   it('las columnas que no existen en la grilla no generan fórmula', () => {

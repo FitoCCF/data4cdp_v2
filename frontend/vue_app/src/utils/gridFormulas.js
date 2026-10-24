@@ -73,12 +73,15 @@ export const porcentajeSolidos = (dweight, tweight, tara) => {
 /**
  * Fórmulas de pesos de un ensayo para columnsConfig, según el índice de cada campo en la grilla.
  * Solo incluye las columnas que existen (índice >= 0), así sirve para grillas con distinto diseño.
+ * Ambas columnas se calculan solas pero admiten corrección manual (indicado por el usuario). Si se
+ * corrige Peso Prod. a mano, % Sol se recalcula con ese valor.
  *
  * @param {(key: string) => number} indexOf  Índice de columna de un campo (p. ej. colKeys.indexOf).
  * @param {object} [options]
+ * @param {boolean} [options.pweightEditable=true]  Permite sobrescribir Peso Prod. a mano.
  * @param {boolean} [options.pSolEditable=true]  Permite sobrescribir % Sólidos a mano.
  */
-export const assayWeightFormulas = (indexOf, { pSolEditable = true } = {}) => {
+export const assayWeightFormulas = (indexOf, { pweightEditable = true, pSolEditable = true } = {}) => {
   const tara = indexOf('tara');
   const tweight = indexOf('tweight');
   const dweight = indexOf('dweight');
@@ -91,17 +94,25 @@ export const assayWeightFormulas = (indexOf, { pSolEditable = true } = {}) => {
       formula: {
         dependsOn: [tweight, tara],
         compute: (num) => pesoProducto(num(tweight), num(tara)),
-        editable: false,
-        description: 'Calculado: Peso Total − Tara',
+        editable: pweightEditable,
+        description: 'Calculado: Peso Total − Tara (editable)',
       },
     };
   }
 
   if (pSol >= 0 && tara >= 0 && tweight >= 0 && dweight >= 0) {
+    // Con columna Peso Prod. el peso neto es el de esa celda (calculada o corregida a mano);
+    // applyFormulas la recalcula antes que % Sol porque ordena las fórmulas por dependencias.
+    const pesoNeto = (num) => (pweight >= 0 ? num(pweight) : pesoProducto(num(tweight), num(tara)));
     formulas[pSol] = {
       formula: {
-        dependsOn: [dweight, tweight, tara],
-        compute: (num) => porcentajeSolidos(num(dweight), num(tweight), num(tara)),
+        dependsOn: pweight >= 0 ? [dweight, tweight, tara, pweight] : [dweight, tweight, tara],
+        compute: (num) => {
+          const neto = pesoNeto(num);
+          const seco = num(dweight);
+          if (seco === null || neto === null || neto <= 0) return null;
+          return roundTo((seco / neto) * 100, 2);
+        },
         editable: pSolEditable,
         description: 'Calculado: Peso Seco / (Peso Total − Tara) × 100',
       },
@@ -125,30 +136,44 @@ export const applyFormulas = (row, changedCol, columnsConfig = {}) => {
     .filter((col) => columnsConfig[col]?.formula);
   if (formulaCols.length === 0) return [];
 
+  // Orden por dependencias: una fórmula se evalúa después de las fórmulas de las que depende
+  // (p. ej. Peso Prod. antes que % Sol), sin importar la posición de las columnas en la grilla.
+  // Un ciclo no se recorre dos veces (visited), así que no hay bucles infinitos.
+  const ordered = [];
+  const visited = new Set();
+  const visit = (col) => {
+    if (visited.has(col)) return;
+    visited.add(col);
+    (columnsConfig[col].formula.dependsOn || [])
+      .map(Number)
+      .filter((dep) => dep !== col && columnsConfig[dep]?.formula)
+      .forEach(visit);
+    ordered.push(col);
+  };
+  formulaCols.forEach(visit);
+
   const num = (col) => toNumber(row[col]);
-  const changed = new Set([Number(changedCol)]);
+  // Columnas editadas a mano: una (escribir) o varias (pegar un bloque en la fila).
+  const edited = new Set((Array.isArray(changedCol) ? changedCol : [changedCol]).map(Number));
+  const changed = new Set(edited);
   const recalculated = [];
 
-  // Como mucho una pasada por fórmula: suficiente para cadenas de dependencias sin ciclos.
-  for (let pass = 0; pass < formulaCols.length; pass++) {
-    let progressed = false;
-    for (const col of formulaCols) {
-      const { dependsOn = [], compute, editable = false } = columnsConfig[col].formula;
-      if (recalculated.includes(col) || !dependsOn.some((dep) => changed.has(Number(dep)))) continue;
-      const value = compute(num, row);
-      if (value === null || value === undefined) {
-        // Faltan datos para calcular. En una columna editable se conserva lo que haya (p. ej. un % Sol
-        // ingresado a mano); en una de solo lectura se vacía, porque su valor ya no es válido.
-        if (editable) continue;
-        row[col] = '';
-      } else {
-        row[col] = value;
-      }
-      recalculated.push(col);
-      changed.add(col);
-      progressed = true;
+  for (const col of ordered) {
+    // Una columna editada a mano no se recalcula (p. ej. al corregir o pegar Peso Prod.).
+    if (edited.has(col)) continue;
+    const { dependsOn = [], compute, editable = false } = columnsConfig[col].formula;
+    if (!dependsOn.some((dep) => changed.has(Number(dep)))) continue;
+    const value = compute(num, row);
+    if (value === null || value === undefined) {
+      // Faltan datos para calcular. En una columna editable se conserva lo que haya (p. ej. un % Sol
+      // ingresado a mano); en una de solo lectura se vacía, porque su valor ya no es válido.
+      if (editable) continue;
+      row[col] = '';
+    } else {
+      row[col] = value;
     }
-    if (!progressed) break;
+    recalculated.push(col);
+    changed.add(col);
   }
   return recalculated;
 };

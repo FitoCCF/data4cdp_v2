@@ -60,22 +60,35 @@ describe('ExcelGrid: columnas calculadas', () => {
     expect(cell(w, 0, COL.pSol).text()).toBe('50')
   })
 
-  it('Peso Prod. no es editable y tiene la ayuda de la fórmula', async () => {
+  it('Peso Prod. y % Sol son calculadas, editables y con la ayuda de la fórmula', async () => {
     const w = await mountInEdit([['1', '', '10', '20', '', '']])
     const td = cell(w, 0, COL.pweight)
-    expect(td.attributes('contenteditable')).toBe('false')
+    expect(td.attributes('contenteditable')).toBe('true')
     expect(td.classes()).toContain('formula-cell')
     expect(td.attributes('title')).toContain('Peso Total − Tara')
-    // % Sol es calculada pero admite corrección manual
     expect(cell(w, 0, COL.pSol).attributes('contenteditable')).toBe('true')
   })
 
   it('pegar un bloque de pesos desde Excel calcula todas las filas', async () => {
     const w = await mountInEdit([['1', '', '', '', '', ''], ['2', '', '', '', '', '']])
-    // Tara, Peso Total, Peso Seco, Peso Prod. (este último se ignora: lo calcula la fórmula)
-    await paste(w, 0, COL.tara, '10\t110\t30\t999\n20\t70\t25\t999\n')
+    // Tara, Peso Total, Peso Seco
+    await paste(w, 0, COL.tara, '10\t110\t30\n20\t70\t25\n')
     expect([cell(w, 0, COL.pweight).text(), cell(w, 1, COL.pweight).text()]).toEqual(['100', '50'])
     expect([cell(w, 0, COL.pSol).text(), cell(w, 1, COL.pSol).text()]).toEqual(['30', '50'])
+  })
+
+  it('un Peso Prod. pegado junto con los pesos se respeta y % Sol lo usa', async () => {
+    const w = await mountInEdit([['1', '', '', '', '', '']])
+    await paste(w, 0, COL.tara, '10\t110\t30\t75\n')
+    expect(cell(w, 0, COL.pweight).text()).toBe('75')
+    expect(cell(w, 0, COL.pSol).text()).toBe('40')
+  })
+
+  it('corregir Peso Prod. a mano recalcula % Sol', async () => {
+    const w = await mountInEdit([['1', '30', '10', '110', '30', '100']])
+    await type(w, 0, COL.pweight, '60')
+    expect(cell(w, 0, COL.pweight).text()).toBe('60')
+    expect(cell(w, 0, COL.pSol).text()).toBe('50')
   })
 
   it('el valor calculado se guarda', async () => {

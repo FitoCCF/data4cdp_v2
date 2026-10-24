@@ -178,7 +178,7 @@ const colToField = colKeys;
 // Orden por defecto de las filas cargadas: por Fecha y, dentro de cada fecha, por Muestra (orden natural
 // del tag: C_01_S2 antes que C_01_S10); a igual muestra, por Hora.
 const defaultSort = [
-    { colIndex: colKeys.indexOf('date'), direction: 'asc' },
+    { colIndex: colKeys.indexOf('date'), direction: 'desc' }, // fecha más reciente primero (indicado por el usuario)
     { colIndex: colKeys.indexOf('sample'), direction: 'asc' },
     { colIndex: colKeys.indexOf('time'), direction: 'asc' }
 ];

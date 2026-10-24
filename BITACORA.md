@@ -198,3 +198,22 @@ filtro de columna debe actuar SOLO sobre los registros de la página; el resulta
   de lugar al instante (detectado por las pruebas). Las filas nuevas se agregan al final.
 - Pruebas: grilla (orden de 2 niveles, desempate, quitar orden, editar sin mover filas) y vista Ensayos
   real (filtrar 3 fechas y verificar el orden por fecha y muestra). Frontend 159 pruebas OK.
+
+## 2026-10-24 — Peso Prod. editable, corrección de datos y fechas más recientes primero
+
+- Datos (autorizado por el usuario): 51 ensayos con Peso Prod. inconsistente (no 151 como se informó
+  antes; el conteo actual con Tara y Peso Total presentes). Respaldo previo en CSV (scratchpad de la sesión).
+  - 2 tipeados a mano con diferencia de centésimas (12768: 712.75 -> 712.7; 13474: 926.49 -> 926.5):
+    Peso Prod. y % Sol recalculados (el % Sol no cambió al redondear a 2 decimales).
+  - 49 con Peso Prod. vacío (2026-07-02 a 2026-08-25): Peso Prod. = Peso Total − Tara. Su % Sol ya era
+    coherente y se conservó.
+  - Verificación: 0 ensayos inconsistentes. 13,424 ensayos sin Tara o Peso Total no se tocan.
+- Peso Prod. y % Sol: calculados y editables a mano. `assayWeightFormulas` (opción `pweightEditable`);
+  % Sol usa el Peso Prod. de la celda, así una corrección manual de Peso Prod. recalcula % Sol.
+- `applyFormulas`: evalúa las fórmulas en orden de dependencias (Peso Prod. antes que % Sol, aunque la
+  columna % Sol esté antes en la grilla) y acepta varias columnas editadas a la vez; al pegar un bloque,
+  un Peso Prod. pegado se respeta y no lo pisa el cálculo de Tara/Peso Total.
+- Backend `Assay.save()`: Peso Prod. solo se calcula si llega vacío (respeta el valor manual) y el % Sol
+  de respaldo usa Peso Prod. como peso neto.
+- Ensayos: orden por defecto Fecha ↓ (más reciente primero), Muestra ↑, Hora ↑.
+- Pruebas: backend 103 OK, frontend 164 OK, build OK.

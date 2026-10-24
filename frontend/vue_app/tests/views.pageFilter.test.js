@@ -214,7 +214,7 @@ describe('Vista Ensayos: Peso Prod. y % Sol calculados', () => {
     const headers = wrapper.findAll('.excel-table thead th .header-text').map((h) => h.text())
     const col = (name) => headers.indexOf(name)
     const td = (r, c) => wrapper.findAll('.excel-table tbody tr')[r].findAll('td')[c + 1] // +1: columna de nº de fila
-    expect(td(0, col('Peso Prod.')).attributes('contenteditable')).toBe('false')
+    expect(td(0, col('Peso Prod.')).attributes('contenteditable')).toBe('true') // calculado pero editable
 
     const tara = td(0, col('Tara'))
     tara.element.focus()
@@ -237,7 +237,7 @@ describe('Vista Ensayos: Peso Prod. y % Sol calculados', () => {
   })
 })
 
-describe('Vista Ensayos: orden por defecto Fecha y, dentro de cada fecha, Muestra', () => {
+describe('Vista Ensayos: orden por defecto Fecha (más reciente primero) y, dentro de cada fecha, Muestra', () => {
   it('al filtrar 3 fechas, las filas quedan agrupadas por fecha y ordenadas por muestra (S2, S3, S10)', async () => {
     const wrapper = await mountView('AssaysView.vue', 'assays')
     const headers = wrapper.findAll('.excel-table thead th .header-text').map((h) => h.text())
@@ -261,7 +261,7 @@ describe('Vista Ensayos: orden por defecto Fecha y, dentro de cada fecha, Muestr
     for (let i = 1; i < filas.length; i++) {
       const a = filas[i - 1]
       const b = filas[i]
-      expect(a.fecha <= b.fecha, `fila ${i}: fechas ${a.fecha} > ${b.fecha}`).toBe(true)
+      expect(a.fecha >= b.fecha, `fila ${i}: fechas ${a.fecha} < ${b.fecha}`).toBe(true)
       if (a.fecha === b.fecha) {
         expect(orden[a.muestra] <= orden[b.muestra], `fila ${i}: ${a.muestra} después de ${b.muestra}`).toBe(true)
       }

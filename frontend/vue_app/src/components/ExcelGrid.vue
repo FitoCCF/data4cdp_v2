@@ -447,10 +447,11 @@ const isFormulaLocked = (colIndex) => isFormulaColumn(colIndex) && !props.column
 
 // Punto único que se ejecuta tras cambiar una celda (escribir, pegar, desplegable, autoincremento):
 // recalcula las fórmulas que dependen de esa columna y luego el rowCalculator propio de la vista.
+// colIndex puede ser una lista (pegado de varias columnas de una misma fila).
 const afterCellChange = (row, colIndex) => {
   applyFormulas(row, colIndex, props.columnsConfig);
   if (props.rowCalculator && typeof props.rowCalculator === 'function') {
-    props.rowCalculator(row, colIndex);
+    (Array.isArray(colIndex) ? colIndex : [colIndex]).forEach((col) => props.rowCalculator(row, col));
   }
 };
 
@@ -1291,8 +1292,10 @@ const handlePaste = (e, visualRowIndex, startCol) => {
       }
     });
 
-    // Se recalculan las fórmulas afectadas por cada columna pegada (antes solo se avisaba la primera).
-    pastedCols.forEach(col => afterCellChange(localGrid.value[targetOriginalRow], col));
+    // Se recalculan juntas las fórmulas afectadas por todas las columnas pegadas de la fila. Así un valor
+    // pegado en una columna calculada editable (p. ej. Peso Prod.) se respeta y no lo pisa el cálculo
+    // disparado por otra columna pegada (Tara, Peso Total).
+    if (pastedCols.length) afterCellChange(localGrid.value[targetOriginalRow], pastedCols);
   });
 
   // Se desenfoca la celda para salir del modo escritura, sin que su blur copie el texto viejo del DOM.

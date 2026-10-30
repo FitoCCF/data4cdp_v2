@@ -236,3 +236,78 @@ filtro de columna debe actuar SOLO sobre los registros de la página; el resulta
 - Pendiente: el autollenado de códigos SIN fecha (autofill-chemical-ids) asignaría códigos nuevos a los
   ensayos 12637 y 10171, que ahora no tienen código.
 - Pruebas: backend 104 OK, frontend 168 OK, build OK.
+
+## 2026-10-29 — Administración de tareas: análisis (sin cambios en código ni datos)
+
+### Modelo y flujo
+- `TaskCatalog` → `Task` (plantilla: frecuencia en días, turno A/B/AB, fecha de inicio) → `TaskP`
+  (ocurrencia programada: año, semana, día, fecha, estado, campos de reprogramación).
+- `Calendar`: 7 grupos por día con turno A (día), B (noche) o x (descanso). `TaskGroupAssignment` une
+  `TaskP` con el grupo del día.
+- Estados: 1 R (realizado), 2 P (pendiente), 3 D (se muestra como "X" en la vista semanal), 10 S.
+- Vistas: semanal (`WeeklyTasksView`, `/weekly-tasks/?week&year`), calendario mensual, programación de
+  grupos (solo lectura), tareas S y correctivas.
+
+### Problemas encontrados
+- No existe generador de `TaskP` en la aplicación; se generaron con scripts locales (ver abajo).
+- Las correctivas no crean `TaskP` (4 sin ocurrencia). Marcar R no llena `completion_date` (5 de 1082).
+- 4907 tareas P vencidas. Los campos de reprogramación no tienen lógica. `TaskP.group` no se usa.
+- POST de la vista semanal con estado inválido devuelve 500. 8 `TaskP` huérfanas.
+- 109 plantillas sin frecuencia y 18 con 999 (el script las salta: 999 = no programar, por confirmar).
+- 16 plantillas sin turno: sus tareas nunca reciben cuadrilla.
+- 165 asignaciones apuntan a un grupo en descanso (x): el calendario cambió después de asignar y nada
+  recalcula las asignaciones.
+- Los datos (calendario, tareas, asignaciones) terminan el 2027-01-03.
+
+### Scripts locales que generaron los datos (`../data4cdpv1_local/scripts`)
+- `generar_calendario.py`: patrón de 49 días (B/A/x) desfasado 7 días por grupo, 7 grupos,
+  2026-01-19 a 2027-01-03.
+- `taskpx.py` (`insert_task`) + `xtaskp.py`: genera `TaskP` con estado P desde 2026-01-19 hasta
+  2027-01-03 para plantillas con frecuencia válida. Frecuencia < 7: patrón por día de la semana que se
+  repite cada semana (2 = lun/mié/vie, 4 = lun/vie), no "cada N días". Salta domingos en frecuencias
+  < 7 y no múltiplos de 7. Una plantilla sin fecha de inicio haría fallar el script.
+- `assign_tasks.py`: asigna por fecha y turno (AB va a A y B), sin duplicar.
+- `reset_table.py`: `TRUNCATE works4cdp_taskp ... CASCADE`. **No ejecutar en producción**: borraría
+  7487 tareas, 18550 asignaciones y los estados R registrados.
+- Los scripts tienen la contraseña de la base escrita en texto plano; no copiarlos al repositorio.
+
+### Cálculo de la semana
+- Fórmula: semana ISO + 6 + (año ISO − 1963) × 52 (2026-01-19 = 3286). Hoy todas las semanas
+  guardadas coinciden con la fórmula.
+- Error al cruzar de año: 2026 tiene 53 semanas ISO, así que 2026-W53 y 2027-W01 dan ambas 3335.
+  `taskpx.py` cuenta semanas de forma continua (2027-W01 = 3336) y diverge de la fórmula.
+- El año guardado es el del calendario: del 28 al 31/12/2026 queda 2026 y del 1 al 3/01/2027 queda
+  2027 en la misma semana 3335. La vista semanal calcula 2027 para la 3335 y oculta las 91 tareas del
+  28 al 31/12/2026.
+- Propuesta (pendiente de decisión): semana continua calibrada en 3286 = 2026-01-19, una sola función
+  para scripts, backend y frontend; comando de generación anual en el backend que agregue solo lo que
+  falta (sin truncar) y no asigne a grupos en descanso.
+- Preguntas abiertas: ¿2027-W01 = 3336?; ¿frecuencia 2 = lun/mié/vie o cada 2 días?; ¿qué es 999?
+
+## 2026-10-29 — PSI REMOLIENDA (172.18.16.193): calibración del LVDT (solo lectura)
+
+- Mismo software que el PSI Molienda C2 (PSI300i v1.4.1). Equipo de otra área (líneas VTM 1 y VTM 2).
+  Acceso solo lectura; no se cambió ni reinició nada.
+- 172.19.x.x es una red interna de Docker de este servidor; los PSI están en 172.18.16.x.
+- Conversión de la señal: cuentas crudas 0–32760; **µm = cuentas ÷ 8** (0–4095 µm), fija en el código
+  (`s(g, 32760, 4095)`). Por ciclo de sonda se toma el mínimo de promedios recortados; lecturas sobre
+  `lvdtSignalThreshold = 29000` marcan sonda abierta.
+- **Span**: no hay parámetro de span ni ganancia en software ni en la interfaz. Verificación en
+  Opciones → Avanzado → Instrumentos → "Sonda Medición de Partículas" (cuentas y "Posición de Caliper"
+  en µm, solo con el motor detenido). Un ajuste sería mecánico o del acondicionador (manual de Outotec;
+  no hay manuales en el equipo). Esto último es inferencia.
+- **Cero (zero check)**: con la celda lavada y sin muestra mide 30 s; la media se guarda en `zcPrimary`
+  y se resta a cada medición (`average −= latestZC.avg`). No se ingresa a mano. Límites (export 2023):
+  media 300–1300, desviación < 7; fuera de límite da aviso y luego error.
+  - Forzarlo: Standby → Opciones (PIN) → Avanzado → Prueba del Sistema → "Zero Check", o el botón físico
+    de cero (entrada digital valor 8 del Wago). Existe "Zero Check Override" que lo desactiva un tiempo.
+  - Historial: Tendencias → Niveles de Cero (`zcPrimary`, promedios semanales en `zcSecondary`).
+  - Estado al 2026-10-29: cero 967 µm, desviación 0–1.1, cada ~22 min; semanas 34–43 entre 965.4 y
+    969.4. Estable, no requiere ajuste.
+- Las ecuaciones de mallas, sólidos y P80 se ajustan con muestras de calibración contra laboratorio
+  (`calibrationSamples`); eso es lo que corrige la escala del resultado.
+- Seguridad (pendiente, sin tocar):
+  - La clave root es la misma en .192 y .193: cambiarla en ambos.
+  - `/var/www/export/psi300i-parameters-…-2023-10-12….json` contiene en texto plano los PIN de opciones
+    y de fábrica, y la carpeta probablemente se sirve por el puerto 80 sin autenticación (no probado).
+- El PSI .192 no respondió el 2026-10-29 (posible equipo apagado o red cortada).

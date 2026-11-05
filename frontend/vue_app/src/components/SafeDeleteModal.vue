@@ -47,6 +47,14 @@
                 <div v-if="item.samples_count !== undefined" class="dep-badge" :class="{ 'has-deps': item.samples_count > 0 }">
                   🧪 Muestras: <strong>{{ item.samples_count }}</strong>
                 </div>
+                <!-- TaskP: las ocurrencias programadas. Es de lejos el conteo más grande y antes no
+                     se mostraba, así que el aviso subestimaba el daño. -->
+                <div v-if="item.taskp_count !== undefined" class="dep-badge" :class="{ 'has-deps': item.taskp_count > 0 }">
+                  🗓️ Ocurrencias programadas: <strong>{{ item.taskp_count }}</strong>
+                </div>
+                <div v-if="item.taskp_realizadas_count" class="dep-badge dep-badge-critical">
+                  ✅ De ellas, ya reportadas como realizadas: <strong>{{ item.taskp_realizadas_count }}</strong>
+                </div>
               </div>
 
               <div v-if="item.total_impact > 0" class="impact-alert">
@@ -298,6 +306,14 @@ const handleConfirm = () => {
   background-color: #fee2e2;
   color: #991b1b;
   font-weight: 600;
+}
+
+/* Las TaskP ya reportadas como realizadas son lo irrecuperable: se destacan aparte. */
+.dep-badge-critical {
+  background-color: #fecaca;
+  color: #7f1d1d;
+  font-weight: 700;
+  box-shadow: inset 0 0 0 1px #dc2626;
 }
 
 .impact-alert {

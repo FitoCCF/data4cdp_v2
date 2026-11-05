@@ -1,5 +1,27 @@
 from django.db import models # Importa el módulo de base de datos de Django para definir modelos
+from django.db.models import Q # Combinador de condiciones para consultas
 from django.contrib.auth.models import User as AuthUser # Importa el modelo de usuario estándar de Django y lo renombra como AuthUser
+from django.utils import timezone # Utilidades de zona horaria: timestamps conscientes de zona
+
+# En works4cdp_estado los nombres son de una letra: 1 = R (realizado), 2 = P (pendiente),
+# 3 = D (deshabilitado), 10 = S. Se compara por nombre y no por id para no quedar atado a que R siga
+# siendo el id 1; se acepta además "Realizada" porque así se llama en las pruebas y en bases antiguas.
+def estado_es_realizado(nombre) -> bool:
+    """True si el nombre de estado corresponde a 'realizado'."""
+    texto = (nombre or '').strip().upper()
+    return texto == 'R' or texto.startswith('REALIZ')
+
+
+def q_estado_realizado(prefijo: str = 'estado') -> Q:
+    """Versión SQL de estado_es_realizado(), para filtrar TaskP sin traer las filas a Python.
+
+    `prefijo` es la ruta al Estado desde el modelo que se consulta ('estado', 'taskp__estado', ...).
+    Se compara por nombre por el mismo motivo que el predicado de arriba: no quedar atado a que R
+    siga siendo el id 1.
+    """
+    return (models.Q(**{f'{prefijo}__estado_nombre__iexact': 'R'})
+            | models.Q(**{f'{prefijo}__estado_nombre__istartswith': 'realiz'}))
+
 
 # Modelo que define el estado en el que se puede encontrar una tarea (Pendiente, Realizada, etc.)
 class Estado(models.Model):
@@ -44,8 +66,11 @@ class Equipment(models.Model):
     tag = models.CharField(max_length=50, null=True, blank=True) # Etiqueta o número de serie del equipo
     name = models.CharField(max_length=100) # Nombre descriptivo del equipo
     description = models.TextField(null=True, blank=True) # Funcionalidad o detalle del equipo
-    system = models.ForeignKey(System, on_delete=models.CASCADE) # Relación con el Sistema al que pertenece (borrado en cascada)
-    area = models.ForeignKey(Area, on_delete=models.CASCADE, null=True, blank=True)  # Relación con el Área en la que se ubica
+    # PROTECT y no CASCADE: borrar un Sistema o un Área arrastraba sus equipos, y con ellos las
+    # tareas y las ocurrencias de TaskP (incluidas las marcadas como realizadas). Ahora el borrado
+    # se rechaza con ProtectedError -> HTTP 409, y hay que reasignar o borrar los equipos primero.
+    system = models.ForeignKey(System, on_delete=models.PROTECT) # Sistema al que pertenece
+    area = models.ForeignKey(Area, on_delete=models.PROTECT, null=True, blank=True)  # Área donde se ubica
 
     class Meta:
         ordering = ['-id']
@@ -71,7 +96,9 @@ class Task(models.Model):
     frequency = models.CharField(max_length=50, null=True, blank=True) # Frecuencia con la que se repite (ej: "Mensual")
     start_date = models.DateField(null=True, blank=True) # Fecha planificada para el primer inicio
     description = models.TextField(null=True, blank=True) # Descripción profunda de qué se debe hacer
-    equipment = models.ForeignKey(Equipment, on_delete=models.CASCADE, null=True, blank=True) # Equipo al que se le aplicará la tarea
+    # PROTECT: la pauta y sus ocurrencias de TaskP son el registro del trabajo reportado; no se van
+    # con el equipo. Ver el comentario de Equipment.system.
+    equipment = models.ForeignKey(Equipment, on_delete=models.PROTECT, null=True, blank=True) # Equipo al que se le aplicará la tarea
     procedure = models.TextField(null=True, blank=True) # Pasos detallados a seguir
     turn = models.CharField(max_length=10, null=True, blank=True) # Turno sugerido u obligatorio
 
@@ -169,8 +196,33 @@ class TaskP(models.Model):
 
     priority = models.IntegerField(null=True, blank=True, default=1)        # Prioridad de ejecución
 
+    # Marca de último cambio. Sirve como "high water mark" para sincronizar hacia afuera (lista de
+    # SharePoint / Power Apps) sin recorrer toda la tabla. auto_now solo actúa en save(): un
+    # TaskP.objects.update(...) de queryset NO la toca, por eso los cambios de estado pasan por
+    # works4cdp.services.taskp_status en lugar de hacer .update() directo.
+    updated_at = models.DateTimeField(auto_now=True, null=True, db_index=True)
+
     class Meta:
         ordering = ['-id']
+
+    def save(self, *args, **kwargs):
+        """Al quedar en estado R (realizado) se registra completion_date si está vacío.
+
+        Antes nadie la llenaba (solo 5 de 1082 tareas en R la tenían), así que la lista de tareas
+        realizadas no tenía cuándo se hizo. La regla es idempotente: no mueve una fecha ya puesta.
+        """
+        if self.estado_id and self.completion_date is None and self._estado_es_realizado():
+            self.completion_date = timezone.now()
+            if 'update_fields' in kwargs and kwargs['update_fields'] is not None:
+                kwargs['update_fields'] = list(kwargs['update_fields']) + ['completion_date']
+        super().save(*args, **kwargs)
+
+    def _estado_es_realizado(self) -> bool:
+        """True si el estado actual es 'realizado' (ver estado_es_realizado)."""
+        try:
+            return estado_es_realizado(self.estado.estado_nombre)
+        except Estado.DoesNotExist:
+            return False
 
 # Asigna la tarea a un evento específico del calendario
 class TaskGroupAssignment(models.Model):

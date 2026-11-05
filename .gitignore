@@ -13,3 +13,6 @@ graphify-out/
 .agents/
 database.tar.gz
 *.tar.gz
+
+# Datos de trabajo: fuentes y volcados, no van al repo
+data/

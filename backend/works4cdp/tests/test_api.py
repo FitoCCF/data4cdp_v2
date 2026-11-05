@@ -5,7 +5,9 @@ from unittest import mock
 from rest_framework import status
 from rest_framework.test import APITestCase
 
-from works4cdp.models import Assay, Plant, TaskP
+from django.db.models import ProtectedError
+
+from works4cdp.models import Area, Assay, Equipment, Plant, System, TaskP
 from works4cdp.tests import factories as f
 
 ROUTER_ENDPOINTS = [
@@ -58,11 +60,19 @@ class PlantCrudTests(APITestCase):
         self.assertIn('name', response.data)
         self.assertIn('tag', response.data)  # max_length=10
 
-    def test_borrar_planta_borra_en_cascada(self):
+    def test_borrar_planta_con_equipos_se_rechaza(self):
+        """Antes esto borraba en cascada la planta, sus áreas, sus equipos y el historial de tareas.
+
+        Desde que Equipment.area es PROTECT (migración 0020), el borrado se rechaza con 409 y hay que
+        reasignar o eliminar los equipos primero. La cascada Planta -> Área sigue existiendo: lo que
+        corta es el equipo.
+        """
         h = f.make_hierarchy()
         f.make_sample(h['equipment'])
-        self.client.delete(f"/api/plants/{h['plant'].id}/")
-        self.assertFalse(type(h['equipment']).objects.exists())
+        response = self.client.delete(f"/api/plants/{h['plant'].id}/")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(type(h['equipment']).objects.exists())
+        self.assertTrue(Plant.objects.filter(id=h['plant'].id).exists())
 
 
 class FiltrosYPaginacionTests(APITestCase):
@@ -196,6 +206,24 @@ class WeeklyTaskViewTests(APITestCase):
         self.assertEqual(self.taskp.estado, self.estado)
         self.assertEqual(self.client.post('/api/weekly-tasks/', {'updates': 'x'}, format='json').status_code, 400)
 
+    def test_post_marcar_realizada_registra_la_hora(self):
+        """Antes la vista hacía .update() de queryset: no ejecutaba save() y dejaba
+        completion_date y updated_at vacíos, así que el paso P -> R no dejaba rastro."""
+        payload = {'updates': [{'id': self.taskp.id, 'estado_id': self.realizada.id}]}
+        respuesta = self.client.post('/api/weekly-tasks/', payload, format='json')
+        self.assertEqual(respuesta.status_code, 200)
+        self.assertEqual(respuesta.data['realizadas'], [self.taskp.id])
+        self.taskp.refresh_from_db()
+        self.assertIsNotNone(self.taskp.completion_date)
+        self.assertIsNotNone(self.taskp.updated_at)
+
+    def test_post_estado_inexistente_devuelve_400(self):
+        # Antes terminaba en 500 por violación de clave foránea.
+        payload = {'updates': [{'id': self.taskp.id, 'estado_id': 99999}]}
+        self.assertEqual(self.client.post('/api/weekly-tasks/', payload, format='json').status_code, 400)
+        self.taskp.refresh_from_db()
+        self.assertEqual(self.taskp.estado, self.estado)
+
 
 class ChemicalIdEndpointsTests(APITestCase):
 
@@ -326,3 +354,91 @@ class ContratoConElFrontendTests(APITestCase):
         self.client.patch(f'/api/taskp/{taskp.id}/', {'estado_id': otro.id}, format='json')
         taskp.refresh_from_db()
         self.assertEqual(taskp.estado, otro)
+
+
+class ImpactoConTaskPTests(APITestCase):
+    """El reporte de impacto tiene que contar las ocurrencias de TaskP: son el conteo más grande.
+
+    Antes solo informaba equipos, tareas, correctivas y muestras, así que para un área real decía
+    "30 tareas" y se callaba 979 ocurrencias programadas (191 ya reportadas como realizadas).
+    """
+
+    def setUp(self):
+        self.h = f.make_hierarchy()
+        self.pendiente = f.make_estado('P')
+        self.realizado = f.make_estado('R')
+        task = f.make_task(f.make_catalog(), self.h['equipment'])
+        correctiva = f.make_corrective(self.h['equipment'], f.make_user())
+        # Dos por la pauta preventiva (una de ellas ya realizada) y una por la correctiva.
+        f.make_taskp(self.pendiente, task=task)
+        f.make_taskp(self.realizado, task=task)
+        f.make_taskp(self.pendiente, corrective_task=correctiva)
+
+    def _impacto(self, recurso, obj):
+        return self.client.get(f'/api/{recurso}/delete-impact/?ids={obj.id}').data['impact'][0]
+
+    def test_cuenta_las_taskp_de_los_dos_caminos(self):
+        """TaskP llega al equipo por task__equipment y por corrective_task__equipment."""
+        for recurso, obj in (('equipments', self.h['equipment']), ('areas', self.h['area']),
+                             ('systems', self.h['system']), ('plants', self.h['plant'])):
+            with self.subTest(recurso=recurso):
+                self.assertEqual(self._impacto(recurso, obj)['taskp_count'], 3)
+
+    def test_informa_aparte_las_realizadas(self):
+        impacto = self._impacto('areas', self.h['area'])
+        self.assertEqual(impacto['taskp_realizadas_count'], 1)
+
+    def test_las_realizadas_no_se_suman_al_total(self):
+        """Son un subconjunto de taskp_count: sumarlas inflaría total_impact."""
+        impacto = self._impacto('areas', self.h['area'])
+        sumables = ('equipments_count', 'tasks_count', 'correctives_count', 'samples_count', 'taskp_count')
+        self.assertEqual(impacto['total_impact'], sum(impacto[k] for k in sumables))
+        self.assertNotIn(impacto['taskp_realizadas_count'], (impacto['total_impact'],))
+
+    def test_sin_taskp_el_total_no_cambia(self):
+        """Un área sin ocurrencias sigue dando el mismo total que antes de este cambio."""
+        otra = f.make_area(self.h['plant'], name='Molienda', tag='ML')
+        self.assertEqual(self._impacto('areas', otra)['total_impact'], 0)
+
+
+class BorradoProtegidoTests(APITestCase):
+    """Borrar algo de lo que cuelga el registro de trabajo devuelve 409, no 500 ni un borrado."""
+
+    def setUp(self):
+        self.h = f.make_hierarchy()
+        self.task = f.make_task(f.make_catalog(), self.h['equipment'])
+        self.taskp = f.make_taskp(f.make_estado('R'), task=self.task)
+
+    def test_borrar_area_con_equipos_devuelve_409(self):
+        response = self.client.delete(f"/api/areas/{self.h['area'].id}/")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn('bloqueado_por', response.data)
+        self.assertTrue(Area.objects.filter(id=self.h['area'].id).exists())
+
+    def test_borrar_sistema_con_equipos_devuelve_409(self):
+        response = self.client.delete(f"/api/systems/{self.h['system'].id}/")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(System.objects.filter(id=self.h['system'].id).exists())
+
+    def test_borrar_equipo_con_tareas_devuelve_409(self):
+        response = self.client.delete(f"/api/equipments/{self.h['equipment'].id}/")
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertTrue(Equipment.objects.filter(id=self.h['equipment'].id).exists())
+
+    def test_la_taskp_realizada_sobrevive(self):
+        """Lo que motivó el cambio: la marcación de realizado no se puede perder por un borrado."""
+        self.client.delete(f"/api/plants/{self.h['plant'].id}/")
+        self.client.delete(f"/api/areas/{self.h['area'].id}/")
+        self.client.delete(f"/api/equipments/{self.h['equipment'].id}/")
+        self.assertTrue(TaskP.objects.filter(id=self.taskp.id).exists())
+
+    def test_borrar_sin_dependencias_sigue_funcionando(self):
+        """PROTECT no debe romper el borrado legítimo de un registro suelto."""
+        suelta = f.make_area(self.h['plant'], name='Área vacía', tag='VA')
+        response = self.client.delete(f'/api/areas/{suelta.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Area.objects.filter(id=suelta.id).exists())
+
+    def test_a_nivel_modelo_levanta_protectederror(self):
+        with self.assertRaises(ProtectedError):
+            self.h['area'].delete()

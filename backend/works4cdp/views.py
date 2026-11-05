@@ -13,6 +13,7 @@ import logging
 from datetime import datetime
 
 from django.db import connection, transaction
+from django.db.models import ProtectedError, Q
 from django.db.models import BooleanField, Case, F, Value, When
 from django.db.models.functions import Coalesce
 from django.contrib.postgres.aggregates import StringAgg
@@ -25,9 +26,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .grid_filters import GridFilterBackend, GridOrderingFilter, distinct_values
+from .services.taskp_status import EstadoInvalido, aplicar_cambios_estado
 from .models import (
     Area, Assay, Calendar, CorrectiveTask, Equipment, Estado, Plant, Sample,
-    System, Task, TaskCatalog, TaskP, User, UserP,
+    System, Task, TaskCatalog, TaskP, User, UserP, q_estado_realizado,
 )
 from .serializers import (
     AreaSerializer, AssaySerializer, CalendarSerializer, CorrectiveTaskSerializer,
@@ -71,6 +73,51 @@ class SchemaMixin:
         return Response({'fields': fields})
 
 
+def _taskp_queryset(ruta: str, obj):
+    """TaskP que cuelgan de `obj`, por los DOS caminos que llegan al equipo.
+
+    TaskP se ancla a un equipo por `task__equipment` (preventivas) o por
+    `corrective_task__equipment` (correctivas): contar solo el primero subestima el impacto.
+    `ruta` es el tramo que va del equipo a `obj` ('' para el equipo mismo, 'area', 'area__plant',
+    'system').
+    """
+    sufijo = f'__{ruta}' if ruta else ''
+    return TaskP.objects.filter(
+        Q(**{f'task__equipment{sufijo}': obj}) | Q(**{f'corrective_task__equipment{sufijo}': obj})
+    ).distinct()
+
+
+def _taskp_count(ruta: str):
+    """Contador de ocurrencias de TaskP, listo para poner en `impact_counts`."""
+    return lambda obj: _taskp_queryset(ruta, obj).count()
+
+
+def _taskp_realizadas_count(ruta: str):
+    """Contador de las que ya quedaron en estado R: lo que no se puede volver a reportar."""
+    return lambda obj: _taskp_queryset(ruta, obj).filter(q_estado_realizado()).count()
+
+
+class ProtectedDeleteMixin:
+    """Traduce ProtectedError a HTTP 409 con el detalle, en vez de dejar escapar un 500.
+
+    Desde que Equipment.system / Equipment.area / Task.equipment son PROTECT, borrar un sistema, un
+    área o un equipo con dependencias se rechaza a propósito. El cliente necesita saber qué lo
+    bloqueó para poder reasignar primero.
+    """
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError as exc:
+            bloqueantes = sorted({type(obj)._meta.verbose_name for obj in exc.protected_objects})
+            return Response(
+                {'error': 'No se puede eliminar: hay registros que dependen de este elemento.',
+                 'bloqueado_por': bloqueantes,
+                 'detalle': str(exc)},
+                status=status.HTTP_409_CONFLICT,
+            )
+
+
 class DeleteImpactMixin:
     """
     Agrega /<recurso>/delete-impact/ (GET con ?ids=1,2 o POST con {"ids": [...]}) que informa
@@ -78,8 +125,12 @@ class DeleteImpactMixin:
 
     Cada ViewSet declara `impact_counts`: un dict ordenado {nombre_campo: función(obj) -> int}.
     El resultado incluye esos conteos más `total_impact` (su suma), igual que antes.
+
+    `impact_counts_info` se informa pero NO se suma: es para conteos que son subconjunto de otro
+    (p.ej. las TaskP en estado R ya están dentro de taskp_count) y sumarlos inflaría total_impact.
     """
     impact_counts = {}
+    impact_counts_info = {}
 
     def _requested_ids(self, request):
         """Lee los IDs pedidos y descarta los que no sean enteros (antes un valor inválido causaba error 500)."""
@@ -97,11 +148,13 @@ class DeleteImpactMixin:
         impact = []
         for obj in self.queryset.model.objects.filter(id__in=self._requested_ids(request)):
             counts = {name: count(obj) for name, count in self.impact_counts.items()}
+            info = {name: count(obj) for name, count in self.impact_counts_info.items()}
             impact.append({
                 'id': obj.id,
                 'tag': obj.tag,
                 'name': obj.name,
                 **counts,
+                **info,
                 'total_impact': sum(counts.values()),
             })
         return Response({'impact': impact})
@@ -155,7 +208,7 @@ class TaskCatalogViewSet(BaseViewSet):
     ordering_fields = ['id', 'name', 'description']
 
 
-class PlantViewSet(DeleteImpactMixin, BaseViewSet):
+class PlantViewSet(ProtectedDeleteMixin, DeleteImpactMixin, BaseViewSet):
     queryset = Plant.objects.all()
     serializer_class = PlantSerializer
     filterset_fields = {
@@ -171,10 +224,14 @@ class PlantViewSet(DeleteImpactMixin, BaseViewSet):
         'tasks_count': lambda plant: Task.objects.filter(equipment__area__plant=plant).count(),
         'correctives_count': lambda plant: CorrectiveTask.objects.filter(equipment__area__plant=plant).count(),
         'samples_count': lambda plant: Sample.objects.filter(equipment__area__plant=plant).count(),
+        'taskp_count': _taskp_count('area__plant'),
+    }
+    impact_counts_info = {
+        'taskp_realizadas_count': _taskp_realizadas_count('area__plant'),
     }
 
 
-class AreaViewSet(DeleteImpactMixin, BaseViewSet):
+class AreaViewSet(ProtectedDeleteMixin, DeleteImpactMixin, BaseViewSet):
     queryset = Area.objects.all()
     serializer_class = AreaSerializer
     filterset_fields = {
@@ -190,10 +247,14 @@ class AreaViewSet(DeleteImpactMixin, BaseViewSet):
         'tasks_count': lambda area: Task.objects.filter(equipment__area=area).count(),
         'correctives_count': lambda area: CorrectiveTask.objects.filter(equipment__area=area).count(),
         'samples_count': lambda area: Sample.objects.filter(equipment__area=area).count(),
+        'taskp_count': _taskp_count('area'),
+    }
+    impact_counts_info = {
+        'taskp_realizadas_count': _taskp_realizadas_count('area'),
     }
 
 
-class SystemViewSet(DeleteImpactMixin, BaseViewSet):
+class SystemViewSet(ProtectedDeleteMixin, DeleteImpactMixin, BaseViewSet):
     queryset = System.objects.all()
     serializer_class = SystemSerializer
     filterset_fields = {
@@ -208,10 +269,14 @@ class SystemViewSet(DeleteImpactMixin, BaseViewSet):
         'tasks_count': lambda system: Task.objects.filter(equipment__system=system).count(),
         'correctives_count': lambda system: CorrectiveTask.objects.filter(equipment__system=system).count(),
         'samples_count': lambda system: Sample.objects.filter(equipment__system=system).count(),
+        'taskp_count': _taskp_count('system'),
+    }
+    impact_counts_info = {
+        'taskp_realizadas_count': _taskp_realizadas_count('system'),
     }
 
 
-class EquipmentViewSet(DeleteImpactMixin, BaseViewSet):
+class EquipmentViewSet(ProtectedDeleteMixin, DeleteImpactMixin, BaseViewSet):
     queryset = Equipment.objects.all()
     serializer_class = EquipmentSerializer
     filterset_fields = {
@@ -227,6 +292,10 @@ class EquipmentViewSet(DeleteImpactMixin, BaseViewSet):
         'tasks_count': lambda eq: eq.task_set.count(),
         'correctives_count': lambda eq: eq.correctivetask_set.count(),
         'samples_count': lambda eq: eq.samples.count(),
+        'taskp_count': _taskp_count(''),
+    }
+    impact_counts_info = {
+        'taskp_realizadas_count': _taskp_realizadas_count(''),
     }
 
 
@@ -626,16 +695,21 @@ class WeeklyTaskView(APIView):
         return Response({"tasks": list(tareas), "calendar": calendario})
 
     def post(self, request):
-        """Guarda cambios masivos de estado: {"updates": [{"id": 1, "estado_id": 2}, ...]}."""
+        """Guarda cambios masivos de estado: {"updates": [{"id": 1, "estado_id": 2}, ...]}.
+
+        Delega en works4cdp.services.taskp_status: antes hacía `.update()` de queryset, que no
+        ejecuta `save()` y por eso no llenaba `completion_date` ni `updated_at`. Sin esas marcas, el
+        paso P -> R no deja rastro y no se puede sincronizar hacia la lista externa.
+        """
         updates = request.data.get('updates', [])
         if not isinstance(updates, list):
             return Response({"error": "'updates' debe ser una lista"}, status=400)
-        # Se valida todo antes de escribir para no dejar la actualización a medias (antes un item sin
-        # 'id' o 'estado_id' lanzaba KeyError tras haber guardado los anteriores).
-        if any(not isinstance(i, dict) or 'id' not in i or 'estado_id' not in i for i in updates):
-            return Response({"error": "Cada elemento requiere 'id' y 'estado_id'"}, status=400)
 
-        with transaction.atomic():
-            for item in updates:
-                TaskP.objects.filter(id=item['id']).update(estado_id=item['estado_id'])
-        return Response({"status": "success"})
+        try:
+            # Valida la forma de los items y la existencia del estado antes de escribir nada; un
+            # estado_id inexistente devolvía 500 por violación de clave foránea.
+            resumen = aplicar_cambios_estado(updates)
+        except (ValueError, EstadoInvalido) as exc:
+            return Response({"error": str(exc)}, status=400)
+
+        return Response({"status": "success", **resumen})

@@ -64,6 +64,7 @@ import { ref, onMounted, computed } from 'vue';
 import ExcelGrid from '../../components/ExcelGrid.vue';
 import AssetSimpleModal from '../../components/AssetSimpleModal.vue';
 import SafeDeleteModal from '../../components/SafeDeleteModal.vue';
+import { mensajeErrorBorrado } from '../../utils/deleteErrors';
 import { api } from '../../api';
 import { buildGridParams, createGridValuesLoader } from '../../utils/gridQuery';
 // Importamos la función de utilidades compartida para sanitizar valores individuales
@@ -270,7 +271,7 @@ const handleDelete = async (idsToDelete) => {
 
     } catch (err) {
         console.error('Error eliminando áreas:', err);
-        alert('Error al eliminar las filas.');
+        alert(mensajeErrorBorrado(err));
         await loadData(currentPage.value);
     } finally {
         loading.value = false;

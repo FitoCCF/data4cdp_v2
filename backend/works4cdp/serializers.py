@@ -3,8 +3,8 @@ import math
 from rest_framework import serializers
 
 from .models import (
-    Area, Assay, Calendar, CorrectiveTask, Equipment, Estado, Plant, Sample,
-    System, Task, TaskCatalog, TaskP, User, UserP,
+    Area, Assay, AssaysPsi, Calendar, CorrectiveTask, Equipment, Estado, Plant,
+    Sample, System, Task, TaskCatalog, TaskP, User, UserP,
 )
 
 # Serializer para cada modelo
@@ -183,6 +183,43 @@ class AssaySerializer(serializers.ModelSerializer):
 
     def to_representation(self, instance):
         # Convertir NaN a None para evitar errores de JSON
+        data = super().to_representation(instance)
+        for key, value in data.items():
+            if isinstance(value, float) and math.isnan(value):
+                data[key] = None
+        return data
+
+
+class AssaysPsiSerializer(serializers.ModelSerializer):
+    """Ensayo granulométrico del PSI (formato CON-PSG-CPR-FM.003).
+
+    Mismo criterio que AssaySerializer: en GET la muestra viaja anidada (la grilla necesita
+    `sample.equipment` para filtrar por equipo) y en POST/PUT se escribe por id.
+
+    `user_id` se declara explícitamente porque el payload de la vista lo manda así; sin esta
+    declaración DRF solo aceptaría la clave `user` y descartaría el valor en silencio.
+    """
+
+    sample = SampleSerializer(read_only=True)
+    sample_id = serializers.PrimaryKeyRelatedField(
+        queryset=Sample.objects.all(), source='sample',
+        write_only=True, allow_null=True, required=False,
+    )
+
+    user_id = serializers.PrimaryKeyRelatedField(
+        queryset=User.objects.all(), source='user',
+        write_only=True, allow_null=True, required=False,
+    )
+
+    class Meta:
+        model = AssaysPsi
+        fields = '__all__'
+        # `user` se escribe por user_id; dejarlo editable permitiría mandar el mismo dato por dos
+        # claves distintas y que una pisara a la otra según el orden del diccionario.
+        read_only_fields = ('user',)
+
+    def to_representation(self, instance):
+        # Un NaN en un FloatField rompe el JSON del cliente: viaja como None, igual que en Assay.
         data = super().to_representation(instance)
         for key, value in data.items():
             if isinstance(value, float) and math.isnan(value):

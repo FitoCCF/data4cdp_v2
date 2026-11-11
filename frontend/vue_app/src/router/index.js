@@ -59,6 +59,12 @@ const router = createRouter({
             component: () => import('../views/genericViews/SamplingView.vue')
         },
         {
+            // Muestreo de calibración del PSI (granulometría, formato CON-PSG-CPR-FM.003)
+            path: '/psi-sampling',
+            name: 'PsiSampling',
+            component: () => import('../views/genericViews/PsiSamplingView.vue')
+        },
+        {
             path: '/excel-test',
             name: 'ExcelTest',
             component: () => import('../views/ExcelTestView.vue')

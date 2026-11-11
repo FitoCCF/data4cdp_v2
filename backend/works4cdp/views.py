@@ -28,14 +28,14 @@ from rest_framework.views import APIView
 from .grid_filters import GridFilterBackend, GridOrderingFilter, distinct_values
 from .services.taskp_status import EstadoInvalido, aplicar_cambios_estado
 from .models import (
-    Area, Assay, Calendar, CorrectiveTask, Equipment, Estado, Plant, Sample,
-    System, Task, TaskCatalog, TaskP, User, UserP, q_estado_realizado,
+    Area, Assay, AssaysPsi, Calendar, CorrectiveTask, Equipment, Estado, Plant,
+    Sample, System, Task, TaskCatalog, TaskP, User, UserP, q_estado_realizado,
 )
 from .serializers import (
-    AreaSerializer, AssaySerializer, CalendarSerializer, CorrectiveTaskSerializer,
-    EquipmentSerializer, EstadoSerializer, PlantSerializer, SampleSerializer,
-    SystemSerializer, TaskCatalogSerializer, TaskPSerializer, TaskSerializer,
-    UserPSerializer, UserSerializer,
+    AreaSerializer, AssaySerializer, AssaysPsiSerializer, CalendarSerializer,
+    CorrectiveTaskSerializer, EquipmentSerializer, EstadoSerializer, PlantSerializer,
+    SampleSerializer, SystemSerializer, TaskCatalogSerializer, TaskPSerializer,
+    TaskSerializer, UserPSerializer, UserSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -598,6 +598,34 @@ class AssayViewSet(BaseViewSet):
             "start_id": next_id,
             "next_chemical_id": current_seq
         })
+
+
+class AssaysPsiViewSet(BaseViewSet):
+    """Ensayos granulométricos del PSI (analizadores de tamaño de partícula).
+
+    El modelo AssaysPsi existía desde el inicio pero nunca tuvo serializer ni ruta, así que la
+    tabla works4cdp_assayspsi estaba vacía y sin forma de llenarse. Esta es la ruta que usa la
+    vista de Muestreo PSI (formato CON-PSG-CPR-FM.003).
+
+    No hay sincronización con el analizador: a diferencia de los Courier, acá todavía no existe
+    `sync-equipment`. Los datos del PSI se transcriben a mano desde la pantalla del equipo.
+    """
+
+    # select_related evita una consulta extra por fila al serializar `sample`.
+    queryset = AssaysPsi.objects.select_related('sample', 'sample__equipment').all()
+    serializer_class = AssaysPsiSerializer
+    grid_extra_fields = ('sample__tag', 'sample__name')
+    filterset_fields = {
+        'id': ['exact', 'in', 'isnull'],
+        'date': ['exact', 'in', 'gte', 'lte', 'isnull'],
+        'time': ['exact', 'in', 'isnull'],
+        'instance': ['exact', 'in', 'isnull'],
+        'turn': ['exact', 'in', 'icontains', 'isnull'],
+        'sample': ['exact', 'in', 'isnull'],
+        'sample__equipment': ['exact', 'in', 'isnull'],
+        'user': ['exact', 'in', 'isnull'],
+    }
+    ordering_fields = ['id', 'date', 'time', 'instance', 'turn', 'sample', 'user']
 
 
 # ---------------------------------------------------------------------------

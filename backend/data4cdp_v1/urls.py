@@ -20,7 +20,8 @@ from rest_framework.routers import DefaultRouter
 from works4cdp.views import (
     EstadoViewSet, PlantViewSet, AreaViewSet, SystemViewSet, EquipmentViewSet,
     TaskCatalogViewSet, TaskViewSet, TaskPViewSet, UserViewSet, CorrectiveTaskViewSet,
-    SampleViewSet, AssayViewSet, UserPViewSet, WeeklyTaskView, CalendarViewSet
+    SampleViewSet, AssayViewSet, AssaysPsiViewSet, UserPViewSet, WeeklyTaskView,
+    CalendarViewSet
 )
 
 # Crear un router para las rutas de la API
@@ -37,6 +38,8 @@ router.register(r'users', UserViewSet)
 router.register(r'correctivetasks', CorrectiveTaskViewSet)
 router.register(r'samples', SampleViewSet)
 router.register(r'assays', AssayViewSet)
+# Granulometría del PSI: /api/assayspsi/ (formato CON-PSG-CPR-FM.003)
+router.register(r'assayspsi', AssaysPsiViewSet)
 router.register(r'userp', UserPViewSet, basename='userp')
 router.register(r'calendars', CalendarViewSet)
 

@@ -170,7 +170,9 @@
 
             <!-- Celdas de datos -->
             <!-- Celdas de datos (Iteradas usando template para soportar combinaciones en filas de resumen) -->
-            <template v-for="(cell, cIndex) in item.row" :key="cIndex">
+            <!-- La clave lleva el nonce de la celda: al recalcularla una fórmula, Vue la recrea desde
+                 el estado aunque el usuario haya roto su nodo de texto borrándola a mano. -->
+            <template v-for="(cell, cIndex) in item.row" :key="cIndex + '-' + cellVersion(item.originalIndex, cIndex)">
               <td
                 v-if="!(item.row.isSummary && cell === null)"
                 class="cell"
@@ -481,8 +483,34 @@ const cellTitle = (cell, colIndex) => {
 // Punto único que se ejecuta tras cambiar una celda (escribir, pegar, desplegable, autoincremento):
 // recalcula las fórmulas que dependen de esa columna y luego el rowCalculator propio de la vista.
 // colIndex puede ser una lista (pegado de varias columnas de una misma fila).
+// Nonce de re-render por celda, para las celdas que escribe una fórmula.
+//
+// Las celdas son contenteditable con una interpolación: Vue actualiza su contenido escribiendo en el
+// nodo de texto que él mismo creó. Si el usuario borra TODO el contenido de la celda a mano, el
+// navegador elimina ese nodo (y suele dejar un <br>), con lo que Vue pierde el anclaje y ya no puede
+// actualizarla. A partir de ahí un valor calculado queda en localGrid pero NO se muestra, y además,
+// si el usuario entra y sale de esa celda, updateCell copia al estado el texto viejo del DOM.
+//
+// Cambiar la clave de la celda obliga a Vue a recrearla desde el estado. Es el mismo recurso que
+// renderVersion usa tras un pegado, pero acotado a las celdas que realmente cambiaron: recrear la
+// fila entera le quitaría el foco a la celda en la que el usuario acaba de hacer clic.
+const cellVersions = ref({});
+const cellVersion = (rowIndex, col) => cellVersions.value[`${rowIndex}:${col}`] || 0;
+const bumpCellVersions = (rowIndex, cols) => {
+  cols.forEach((col) => {
+    const key = `${rowIndex}:${col}`;
+    cellVersions.value[key] = (cellVersions.value[key] || 0) + 1;
+  });
+};
+
 const afterCellChange = (row, colIndex) => {
-  applyFormulas(row, colIndex, props.columnsConfig);
+  const recalculated = applyFormulas(row, colIndex, props.columnsConfig);
+  if (recalculated.length > 0) {
+    // Se busca el índice en vez de recibirlo para no cambiar la firma de los cuatro llamadores
+    // (escribir, desplegable, pegar, autoincrementar). Es una página de filas, no toda la tabla.
+    const rowIndex = localGrid.value.indexOf(row);
+    if (rowIndex >= 0) bumpCellVersions(rowIndex, recalculated);
+  }
   if (props.rowCalculator && typeof props.rowCalculator === 'function') {
     (Array.isArray(colIndex) ? colIndex : [colIndex]).forEach((col) => props.rowCalculator(row, col));
   }
@@ -858,6 +886,7 @@ const initGrid = () => {
   } else {
     localGrid.value = [];
   }
+  cellVersions.value = {}; // los nonces son por posición: al recargar datos ya no corresponden
   refreshView();
   rowHeights.value = localGrid.value.map(() => DEFAULT_ROW_HEIGHT);
   calculateAutoWidths();
@@ -875,6 +904,7 @@ watch(() => props.data, (newData) => {
       return newRow;
     });
     rowHeights.value = localGrid.value.map(() => DEFAULT_ROW_HEIGHT);
+    cellVersions.value = {}; // ver initGrid
     refreshView();
     if (colWidths.value.length === 0 || colWidths.value.length !== props.headers.length) {
         calculateAutoWidths();

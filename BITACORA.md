@@ -785,3 +785,74 @@ timestamp, 16349 ids distintos). Las dos salidas posibles:
   aparece con la hora de carga, no con la del ensayo.
 
 Sin decidir.
+
+## 2026-11-11 — Muestreo del PSI de Molienda C1 y relleno con cero del CLB
+
+### Hecho
+- **`AssaysPsi` expuesto en la API.** El modelo existía desde el principio (`models.py:347`) sin
+  serializer ni ruta, así que las 59 columnas de los PSI no se podían leer ni escribir.
+  - `serializers.py`: `AssaysPsiSerializer`, con `sample` anidado de solo lectura, `sample_id` y
+    `user_id` de solo escritura, y `NaN -> None` en `to_representation` (los PSI mandan `NaN`).
+  - `views.py`: `AssaysPsiViewSet(BaseViewSet)` con `select_related('sample', 'sample__equipment')`,
+    `grid_extra_fields` del tag y nombre de la muestra, y filtros por fecha, hora, instancia, turno,
+    muestra, equipo de la muestra y usuario.
+  - `urls.py`: ruta `assayspsi/`.
+  - `tests/test_api.py`: `MuestreoPsiTests` (4 pruebas: alta con todos los campos del formato,
+    muestra anidada en el GET, filtro por equipo y fecha, y que agregar los porcentajes del
+    laboratorio después no borre los datos del PSI). **131 pruebas OK** (eran 127).
+- **Vista `/psi-sampling`** (`views/genericViews/PsiSamplingView.vue`, nueva): formato
+  CON-PSG-CPR-FM.003 v02 del PSI MOLIENDA NORTE 300i C1, con la cabecera oficial (unidad, gerencia,
+  fecha, enviado por, operador de metalurgia) y 28 columnas en tres bloques: pesos parciales, datos
+  del PSI al tomar la muestra, y laboratorio. `% SÓLIDOS` es calculada y editable, reusando
+  `assayWeightFormulas`. Entrada "Muestreo PSI" en el sidebar y ruta en el router.
+  - El equipo se resuelve **por nombre + descripción** (`PSI` / `Molienda C1`), no por id fijo, y la
+    vista avisa en pantalla si no lo encuentra o si el PSI no tiene muestras cargadas.
+  - Estilo: copia literal de las clases de `SamplingView.vue` (el formato de Courier), por pedido
+    explícito. Dos intentos previos se descartaron: un selector entre los 4 PSI (cada PSI tiene su
+    propio formato, no son iguales) y una réplica fiel de la geometría del Excel (se veía mal).
+  - Para que las 28 columnas entren sin scroll horizontal se anula en el CSS de esta vista el
+    `MIN_COL_WIDTH = 80` que `ExcelGrid.calculateAutoWidths()` escribe como estilo en línea
+    (28 x 80 = 2240 px de piso). El `!important` del CSS le gana al estilo en línea, que no lo lleva.
+    `ExcelGrid.vue` no se modificó para esto: los Courier conservan sus anchos calculados.
+- **CLB: las celdas vacías salen como `0`.** `utils/clbFile.js` (nuevo) con `formatClbNumber`, usado
+  por `AssaysView.vue`. Antes una celda vacía dejaba dos tabuladores seguidos en el archivo y el
+  destino corría las columnas. Fecha y hora mantienen su formato y pueden quedar vacías.
+- `utils/gridHelpers.js`: las claves numéricas de los PSI (`psolid`, `P80`, `aP*`, `pP*`, `pW*`, …)
+  entran en `numericKeys`, así que al pegar desde Excel se les quita el separador de miles.
+- `qa/probe_psi_molienda.sql` y `qa/probe_area_30.sql` (nuevos, solo lectura).
+- **190 pruebas de frontend OK**, incluidas `PsiSamplingView.test.js` y `clbFile.test.js` (nuevas).
+
+### Medido
+- El `.xlsm` y el `.xlsx` del formato son el mismo libro (difieren solo en un `=NOW()` recalculado y
+  en el blob del macro). Se leyó con un volcador propio de estructura xlsx, sin ejecutar macros.
+- Equipo **3** = `PSI` / `Molienda C1`, área Molienda C1, Concentradora 1, con **0 muestras**. Los
+  otros PSI son 4, 7 y 8; solo el 7 tiene muestras (L1, L2). Los Courier son 1, 2, 5 y 6.
+  `works4cdp_assayspsi` existe con 0 filas y sus 59 columnas coinciden con el modelo.
+- El `%SOL` del PSI en el Excel es una **fracción** con formato `0.00%`; el `% SÓLIDOS` del
+  laboratorio es un número plano. Hay que multiplicar por 100 cuando se conecte el analizador.
+- Área 30 (`Infraestructura de red C2`): la referencian solo los equipos 180 y 182 (dos switches del
+  sistema 12, Redes), sin tareas, correctivas, muestras ni ensayos. `Equipment.area` es `PROTECT`,
+  así que borrar el área se rechaza con 409 hasta reasignar los dos equipos.
+- `confdeltype` de `pg_constraint` **no** sirve para leer el `on_delete` de Django: todas sus FK se
+  crean como NO ACTION y `PROTECT`/`CASCADE` se resuelven en Python. La fuente es `models.py`.
+
+### Decisiones tomadas
+- La ronda del formato (A/B/C) se guarda en `AssaysPsi.turn` y el id del analizador en `instance`.
+  Es un uso forzado de los dos campos (`turn` documenta "turno") y no queda campo libre para un
+  contador de ronda aparte. La alternativa es un campo nuevo con migración: **sin decidir**.
+- No se cargó ningún dato de muestra: el usuario pidió generar solo la interfaz.
+
+### Pendiente
+1. **El PSI de Molienda C1 no tiene muestras** (equipo 3, 0 filas). Hay que crear las secciones 3, 4
+   y 5 en Muestras Físicas antes de poder guardar una fila del formato.
+2. **Bug latente en los Courier, no corregido:** `SamplingView.vue` manda `payload.user_id` para los
+   ensayos, pero `AssaySerializer` espera `user`.
+   `ContratoConElFrontendTests.test_assays_acepta_user_y_sample_id` documenta que `user_id` "se
+   ignora en silencio", así que "ENVIADO POR" probablemente nunca se guardó.
+3. La exportación a `.xlsx` del formato del PSI no está: el generador OpenXML vive dentro de
+   `SamplingView.vue` y hay que extraerlo a un módulo compartido antes de reusarlo.
+4. Los otros tres PSI (Remolienda C1, Molienda C2, Remolienda C2) necesitan su propia vista desde su
+   propio Excel; los formatos no son iguales entre sí.
+5. En el Excel, `Q6:W6` está en blanco (parece un rótulo de DEPARTAMENTO/ÁREA borrado). La vista sí
+   dibuja ese rótulo, igual que el formato de Courier.
+6. La vista **no se verificó visualmente**: las pruebas pasan y compila, pero nadie la vio renderizada.

@@ -7,12 +7,12 @@ from rest_framework.test import APITestCase
 
 from django.db.models import ProtectedError
 
-from works4cdp.models import Area, Assay, Equipment, Plant, System, TaskP
+from works4cdp.models import Area, Assay, AssaysPsi, Equipment, Plant, System, TaskP
 from works4cdp.tests import factories as f
 
 ROUTER_ENDPOINTS = [
     'estados', 'plants', 'areas', 'systems', 'equipments', 'taskcatalogs', 'tasks', 'taskp',
-    'users', 'correctivetasks', 'samples', 'assays', 'userp', 'calendars',
+    'users', 'correctivetasks', 'samples', 'assays', 'assayspsi', 'userp', 'calendars',
 ]
 
 
@@ -354,6 +354,97 @@ class ContratoConElFrontendTests(APITestCase):
         self.client.patch(f'/api/taskp/{taskp.id}/', {'estado_id': otro.id}, format='json')
         taskp.refresh_from_db()
         self.assertEqual(taskp.estado, otro)
+
+
+class MuestreoPsiTests(APITestCase):
+    """Contrato de /api/assayspsi/ con la vista PsiSamplingView.vue.
+
+    El modelo AssaysPsi estaba en models.py desde el inicio pero sin serializer ni ruta, así que la
+    tabla no se podía llenar desde la aplicación. Estas pruebas fijan lo que manda la grilla del
+    formato CON-PSG-CPR-FM.003 (una fila = una sección de molienda en una de las rondas A/B/C).
+    """
+
+    def setUp(self):
+        self.equipment = f.make_equipment(
+            f.make_system(), f.make_area(f.make_plant()), name='PSI', tag='PSI-C1',
+        )
+        self.seccion3 = f.make_sample(self.equipment, tag='S3', name='Sección 3')
+        self.seccion4 = f.make_sample(self.equipment, tag='S4', name='Sección 4')
+        self.user = f.make_user()
+
+    def _fila(self, **extra):
+        """Una fila del formato, con los valores reales de la hoja C1_PSI_MOLIENDA."""
+        payload = {
+            'date': '2026-10-10',
+            'time': '09:26',
+            'turn': 'A',
+            'sample_id': self.seccion3.id,
+            'user_id': self.user.id,
+            'meta_user': 'Anthony Taya',
+            # Laboratorio: pesos y mallas
+            'tara': 114.5, 'tweight': 1035.5, 'dweight': 300.0, 'psolid': 32.57,
+            'pW48': 7.62, 'pW200': 48.71,
+            # Datos que marcaba el PSI al tomar la muestra
+            'instance': 1622,
+            'aAvg': 322.75, 'aSD': 106.7, 'aDensity': 1.79, 'aSol': 35.91,
+            'aP48': 7.62, 'P80': 197.76,
+        }
+        payload.update(extra)
+        return payload
+
+    def test_crea_una_fila_con_los_campos_del_formato(self):
+        response = self.client.post('/api/assayspsi/', self._fila(), format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.data)
+
+        fila = AssaysPsi.objects.get(id=response.data['id'])
+        self.assertEqual(fila.sample, self.seccion3)
+        # user_id SÍ se respeta acá, al contrario de /api/assays/ (ver ContratoConElFrontendTests).
+        self.assertEqual(fila.user, self.user)
+        self.assertEqual(fila.turn, 'A')
+        self.assertEqual(fila.instance, 1622)
+        self.assertEqual(fila.psolid, 32.57)
+        self.assertEqual(fila.P80, 197.76)
+        self.assertEqual(fila.meta_user, 'Anthony Taya')
+
+    def test_la_muestra_viaja_anidada_en_get(self):
+        """La grilla filtra por equipo a través de sample.equipment: necesita el objeto, no el id."""
+        self.client.post('/api/assayspsi/', self._fila(), format='json')
+
+        fila = self.client.get('/api/assayspsi/').data['results'][0]
+        self.assertEqual(fila['sample']['id'], self.seccion3.id)
+        self.assertEqual(fila['sample']['equipment'], self.equipment.id)
+
+    def test_filtra_por_equipo_y_por_fecha_como_la_vista(self):
+        self.client.post('/api/assayspsi/', self._fila(), format='json')
+        self.client.post(
+            '/api/assayspsi/',
+            self._fila(sample_id=self.seccion4.id, turn='B', date='2026-10-11'),
+            format='json',
+        )
+
+        response = self.client.get(
+            f'/api/assayspsi/?sample__equipment={self.equipment.id}&date=2026-10-10'
+        )
+        self.assertEqual(response.data['count'], 1)
+
+        otro = f.make_equipment(f.make_system(name='Otros', tag='OT'), name='Courier', tag='CR9')
+        response = self.client.get(f'/api/assayspsi/?sample__equipment={otro.id}')
+        self.assertEqual(response.data['count'], 0)
+
+    def test_los_porcentajes_del_laboratorio_se_agregan_despues(self):
+        """El laboratorio devuelve sus mallas horas más tarde: se edita la fila sin perder el PSI."""
+        creada = self.client.post('/api/assayspsi/', self._fila(), format='json').data
+
+        response = self.client.put(
+            f"/api/assayspsi/{creada['id']}/",
+            self._fila(pP48=7.1, pP65=19.0, pP100=29.5, pP150=39.0, pP200=48.0),
+            format='json',
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+
+        fila = AssaysPsi.objects.get(id=creada['id'])
+        self.assertEqual(fila.pP200, 48.0)
+        self.assertEqual(fila.aP48, 7.62)  # lo que marcó el PSI sigue ahí
 
 
 class ImpactoConTaskPTests(APITestCase):

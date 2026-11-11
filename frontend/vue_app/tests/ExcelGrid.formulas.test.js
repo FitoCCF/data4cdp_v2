@@ -41,6 +41,17 @@ const type = async (w, r, c, text) => {
   await td.trigger('blur')
   await nextTick()
 }
+// Borrar la celda como lo hace el navegador: al vaciar una celda contenteditable se elimina el nodo
+// de texto y queda un <br>. Eso destruye el anclaje que Vue usa para actualizar esa celda, que es la
+// causa del fallo reportado. NO alcanza con poner node.data = '' (eso conserva el nodo).
+const clear = async (w, r, c) => {
+  const td = cell(w, r, c)
+  td.element.focus()
+  td.element.innerHTML = '<br>'
+  await td.trigger('input')
+  await td.trigger('blur')
+  await nextTick()
+}
 const paste = async (w, r, c, text) => {
   const td = cell(w, r, c)
   td.element.focus()
@@ -108,6 +119,59 @@ describe('ExcelGrid: columnas calculadas', () => {
     expect(cell(w, 0, COL.pSol).text()).toBe('31.5')
     await type(w, 0, COL.dweight, '40')
     expect(cell(w, 0, COL.pSol).text()).toBe('40')
+  })
+})
+
+// Caso reportado: "ingreso un valor en % Sol o Peso Prod., lo borro dejando la celda en blanco, y
+// después al cargar Tara / Peso Total / Peso Seco ya no se calcula ninguno de los dos".
+describe('ExcelGrid: vaciar a mano una columna calculada y después cargar los pesos', () => {
+  it('Peso Prod. y % Sol se vuelven a calcular y se muestran', async () => {
+    const w = await mountInEdit([['1', '30', '10', '110', '30', '100']])
+
+    await clear(w, 0, COL.pSol)
+    await clear(w, 0, COL.pweight)
+    expect(cell(w, 0, COL.pweight).text()).toBe('')
+    expect(cell(w, 0, COL.pSol).text()).toBe('')
+
+    await type(w, 0, COL.tara, '20')
+    await type(w, 0, COL.tweight, '120')
+    await type(w, 0, COL.dweight, '50')
+
+    expect(cell(w, 0, COL.pweight).text()).toBe('100')
+    expect(cell(w, 0, COL.pSol).text()).toBe('50')
+  })
+
+  it('el valor llega al estado aunque la celda se haya vaciado a mano', async () => {
+    // Distingue las dos capas: el cálculo (applyFormulas sobre localGrid) y lo que se ve en la celda.
+    // Esta prueba pasaba incluso con el fallo; la de arriba era la que fallaba.
+    const w = await mountInEdit([['1', '30', '10', '110', '30', '100']])
+    await clear(w, 0, COL.pweight)
+    await clear(w, 0, COL.pSol)
+    await type(w, 0, COL.tara, '20')
+    await type(w, 0, COL.tweight, '120')
+    await type(w, 0, COL.dweight, '50')
+
+    await w.findAll('button').find((b) => b.text() === 'Guardar Cambios').trigger('click')
+    await w.findAll('button').find((b) => b.text() === 'Sí, Guardar').trigger('click')
+    const [row] = w.emitted('save')[0][0]
+    expect(row[COL.pweight]).toBe(100)
+    expect(row[COL.pSol]).toBe(50)
+  })
+
+  it('vaciar solo % Sol: se recalcula al cambiar un peso', async () => {
+    const w = await mountInEdit([['1', '30', '10', '110', '30', '100']])
+    await clear(w, 0, COL.pSol)
+    await type(w, 0, COL.dweight, '50')
+    expect(cell(w, 0, COL.pSol).text()).toBe('50')
+    expect(cell(w, 0, COL.pweight).text()).toBe('100')
+  })
+
+  it('vaciar solo Peso Prod.: se recalcula y % Sol lo usa', async () => {
+    const w = await mountInEdit([['1', '30', '10', '110', '30', '100']])
+    await clear(w, 0, COL.pweight)
+    await type(w, 0, COL.tweight, '60')
+    expect(cell(w, 0, COL.pweight).text()).toBe('50')
+    expect(cell(w, 0, COL.pSol).text()).toBe('60')
   })
 })
 

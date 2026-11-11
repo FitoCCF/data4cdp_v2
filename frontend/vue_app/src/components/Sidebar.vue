@@ -100,7 +100,8 @@ const menuGroups = [
       { name: 'Tareas Semanales', path: '/weeklytasks' },
       { name: 'Calendario Mensual', path: '/monthly-calendar' },
       { name: 'Rotación de Cuadrillas', path: '/calendario-grupos' },
-      { name: 'Muestreo Courier', path: '/sampling' }
+      { name: 'Muestreo Courier', path: '/sampling' },
+      { name: 'Muestreo PSI', path: '/psi-sampling' }
     ]
   },
   {

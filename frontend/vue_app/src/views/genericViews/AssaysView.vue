@@ -129,6 +129,7 @@ import { useApi } from '../../composables/useApi';
 // Importamos la función de utilidades compartida para construir el payload sanitizado
 import { buildPayloadFromRow } from '../../utils/gridHelpers';
 import { assayWeightFormulas } from '../../utils/gridFormulas';
+import { formatClbNumber } from '../../utils/clbFile';
 
 // ============================================================================
 // 1. CONFIGURACIÓN DE COLUMNAS
@@ -637,10 +638,10 @@ const exportClbFile = async () => {
       return String(dateStr);
     };
 
-    const formatValue = (val) => {
-      if (val === null || val === undefined) return '';
-      return String(val);
-    };
+    // Columnas numéricas: un valor vacío en la base se escribe como 0, porque el .clb no admite
+    // columnas en blanco (ver utils/clbFile.js). La fecha y la hora usan sus propios formateadores y
+    // sí pueden quedar vacías.
+    const formatValue = formatClbNumber;
 
     const formatTimeVal = (timeStr) => {
       if (!timeStr) return '';

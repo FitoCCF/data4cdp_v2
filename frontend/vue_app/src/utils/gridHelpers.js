@@ -5,7 +5,15 @@ export const numericKeys = [
   'n1fe', 'n2cu', 'n3zn', 'n4mo', 'n5ech5', 'n6sc', 'n7ech7',
   'pFe', 'pCu', 'pZn', 'pMo', 'pIns', 'pOx', 'pSol',
   'tara', 'tweight', 'dweight', 'pweight',
-  'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7'
+  'a1fe', 'a2cu', 'a3zn', 'a4mo', 'a5a5', 'a6sol', 'a7a7',
+  // Granulometría del PSI (AssaysPsi): % sólidos, pesos retenidos por malla, datos del analizador
+  // y porcentajes del laboratorio. Hacen falta acá porque P80 y los pesos pasan de 1000 y desde
+  // Excel llegan como '1,035.5'; sin esto la coma viaja a la API y el valor se rechaza.
+  'psolid', 'P80', 'P50',
+  'pW48', 'pW65', 'pW100', 'pW150', 'pW200', 'pW325', 'pW400',
+  'aAvg', 'aSD', 'aDensity', 'aSol',
+  'aP48', 'aP65', 'aP100', 'aP150', 'aP200', 'aP325', 'aP400',
+  'pP48', 'pP65', 'pP100', 'pP150', 'pP200', 'pP325', 'pP400'
 ];
 
 /**
